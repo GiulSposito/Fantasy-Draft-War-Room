@@ -12,3 +12,4 @@
 ^renv$
 ^renv\.lock$
 ^\.git$
+^tests/testthat/fixtures/regenerate-snapshot-valid\.R$

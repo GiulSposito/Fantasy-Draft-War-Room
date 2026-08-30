@@ -14,9 +14,11 @@ RoxygenNote: 7.3.2
 Depends:
     R (>= 4.6)
 Imports:
+    digest (>= 0.6.30),
     jsonlite (>= 1.8.0),
     shiny (>= 1.14.0),
-    utils
+    utils,
+    yaml (>= 2.3.0)
 Suggests:
     config,
     devtools,

@@ -86,12 +86,60 @@ canônico; `parse_snapshot_bundle()` não os coage.
 Desserializado e exposto cru em `qa_report`. A classificação bloqueante/aviso
 dos achados é a Story 1.5 — este parser não a aplica.
 
+## Identidade de conteúdo (`snapshot_content_hash`)
+
+`snapshot_content_hash(raw_files, metadata)` (`R/domain_snapshot_hash.R`,
+domínio puro) é o SHA-256 (hex minúsculo) de um **manifesto canônico** dos 4
+arquivos:
+
+1. Para `players.csv`, `metrics.csv`, `qa-report.json`: o conteúdo cru com
+   quebras de linha normalizadas para LF (`\r\n` **e** `\r` isolado → `\n`),
+   bytes tratados como UTF-8.
+2. Para `metadata.json`: **não** os bytes crus, mas
+   `canonical_json(metadata)` com o campo derivado **`content_hash` removido** —
+   assim o hash não depende da formatação do JSON em disco (indentação, ordem
+   das chaves), mas depende de todo campo de conteúdo (inclusive `scoring_hash`).
+3. SHA-256 de cada um dos 4 payloads acima (texto normalizado para bytes UTF-8).
+4. Manifesto = mapa `{ "<path>": "<sha256>" }` com as chaves (paths relativos)
+   em ordem de byte, serializado por `canonical_json()`.
+5. Resultado = SHA-256 desse manifesto.
+
+Consequências: idêntico entre máquinas para o mesmo conteúdo (independe de
+locale — marca decimal, colação, encoding); muda com qualquer byte alterado
+nos **4 arquivos do manifesto**; **não** muda quando só o valor de
+`metadata.json$content_hash` difere, quando `metadata.json` é reindentado /
+reordenado em disco, ou quando `scoring.yml` muda (fora do manifesto).
+`verify_content_hash(raw_files, metadata)` compara o hash calculado com
+`metadata$content_hash` e retorna `NULL` ou
+`domain_error("snapshot_content_incompativel")`.
+
+`scoring.yml` é um 5º arquivo do diretório do bundle e fica **fora** do
+manifesto de conteúdo (o manifesto lista exatamente os 4 arquivos acima). Sua
+identidade é o `scoring_config_hash` = `SHA-256(canonical_json(yaml_parseado))`,
+comparado a `metadata.json$scoring_hash` por `verify_scoring_hash()`.
+
+### Forma canônica (`canonical_json`, contrato AD-12)
+
+UTF-8, LF. Objetos: `{` + pares `"chave":valor` **ordenados por byte**
+(`order(method = "radix")`, independe de `LC_COLLATE`) + `}`, sem espaços.
+Arrays: `[...]`. Strings JSON-escapadas (formas curtas `\n \r \t \b \f \" \\`,
+demais controles < 0x20 como `\u00xx`). `NULL`/`NA` → `null` explícito.
+Lógico → `true`/`false`. Número de **valor inteiro** (seja `integer` ou
+`double` como `4.0`, `|x| < 2^53`) → sem parte decimal. Demais reais →
+`formatC(x, format = "f", digits = 10, decimal.mark = ".")` (10 casas fixas,
+marca decimal sempre `.` independente de `OutDec`, sem notação científica).
+`NaN`/`Inf`/`-Inf`, nomes de objeto parciais/duplicados e vetores atômicos
+nomeados com `length > 1` são erro (`stop()`). Reusado pelo `draft_state_hash`
+do Epic 4 (revisar se 10 casas servem para VOR/points).
+
 ## Erros de domínio
 
 | `code` | Quando |
 |---|---|
 | `bundle_arquivo_ausente` | Um dos 4 arquivos não existe no diretório |
-| `bundle_formato_invalido` | CSV ou JSON com sintaxe inválida |
+| `bundle_formato_invalido` | CSV, JSON ou YAML de scoring com sintaxe inválida; `scoring.yml` que não é um mapa; bytes NUL em arquivo do manifesto |
+| `snapshot_scoring_incompativel` | `scoring_config_hash(scoring.yml)` ≠ `metadata$scoring_hash` (`details$esperado`, `details$encontrado`) |
+| `snapshot_content_incompativel` | `snapshot_content_hash(bundle)` ≠ `metadata$content_hash` (`details$esperado`, `details$encontrado`) |
 | `snapshot_formato_invalido` | Tabela/objeto na forma errada: CSV não é tabela, nomes de coluna duplicados, `metadata.json` não é objeto JSON |
 | `snapshot_schema_incompativel` | `metadata$schema_version` ≠ `"snapshot-bundle-v1"` (`details$encontrado`) |
 | `snapshot_coluna_ausente` | Coluna obrigatória ausente em `players.csv`/`metrics.csv` (`details$campo`) |

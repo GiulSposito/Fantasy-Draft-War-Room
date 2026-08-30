@@ -25,3 +25,11 @@ Itens reais levantados durante o build, fora do escopo da story que os expôs. C
 - source_spec: `spec-1-2-contrato-schema-snapshot-bundle.md`
   summary: Tokens de nulo em texto ("null", "none") em células numéricas opcionais são rejeitados como `snapshot_tipo_invalido`.
   evidence: `read.csv` já converte `NA` sem aspas para `NA`, mas `"null"`/`"none"` de CSV escrito à mão viram erro em vez de `NA`. A normalização de dados de fontes reais pertence ao CLI (1.4) ou a um passo de limpeza (1.5).
+
+- source_spec: `spec-1-3-hash-canonico-manifesto-bundle.md`
+  summary: `canonical_json()` usa decimal fixo de 10 casas; a precisão suficiente para o `draft_state_hash` do Epic 4 (VOR, points) ainda não foi decidida.
+  evidence: 10 casas são exatas para os pesos de scoring (`0.04`, `-2.0`). Um reviewer sugeriu 15–17 casas para round-trip completo de `double`. A decisão final de precisão pertence ao Epic 4, quando os tipos numéricos do subconjunto de estado (AD-12) forem fixados; até lá 10 casas cobrem tudo que 1.3 hasheia.
+
+- source_spec: `spec-1-3-hash-canonico-manifesto-bundle.md`
+  summary: `snapshot_content_hash()` hasheia o conteúdo dos arquivos via `character` (com `enc2utf8` + guarda de NUL), não os bytes `raw` diretamente.
+  evidence: Para uma feature de "identidade de conteúdo sobre bytes crus", hashear o vetor `raw` do `readBin` sem passar por `rawToChar` seria mais robusto (sem risco de encoding/NUL). O caminho atual funciona com as guardas adicionadas; revisitar se algum bundle real bater em problema de encoding.
