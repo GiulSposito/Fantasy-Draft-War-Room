@@ -1,0 +1,5 @@
+player_id,display_name,normalized_name,position,nfl_team,bye_week
+p1,Josh Allen,josh allen,QB,BUF,12
+p2,Christian McCaffrey,christian mccaffrey,RB,SF,9
+p3,Justin Jefferson,justin jefferson,WR,MIN,6
+p4,San Francisco,san francisco,D/ST,SF,9

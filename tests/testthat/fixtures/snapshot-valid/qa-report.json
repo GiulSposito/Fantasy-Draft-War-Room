@@ -1,0 +1,11 @@
+{
+  "schema_version": "qa-report-v1",
+  "generated_at": "2025-08-30T12:00:00Z",
+  "findings": [],
+  "coverage": {
+    "QB": 1,
+    "RB": 1,
+    "WR": 1,
+    "DST": 1
+  }
+}
