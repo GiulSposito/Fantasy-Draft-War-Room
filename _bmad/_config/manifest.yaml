@@ -1,0 +1,30 @@
+installation:
+  version: 6.11.0
+  installDate: 2026-08-28T22:57:39.438Z
+  lastUpdated: 2026-08-29T19:43:16.927Z
+modules:
+  - name: core
+    version: 6.11.0
+    installDate: 2026-08-28T22:57:37.115Z
+    lastUpdated: 2026-08-29T19:43:16.911Z
+    source: built-in
+    npmPackage: null
+    repoUrl: null
+  - name: bmm
+    version: 6.11.0
+    installDate: 2026-08-28T22:57:38.103Z
+    lastUpdated: 2026-08-29T19:43:16.914Z
+    source: built-in
+    npmPackage: null
+    repoUrl: null
+  - name: rds
+    version: main
+    installDate: 2026-08-28T22:57:39.097Z
+    lastUpdated: 2026-08-29T19:43:16.927Z
+    source: custom
+    npmPackage: null
+    repoUrl: https://github.com/GiulSposito/helix-r-science-core
+    channel: next
+ides:
+  - codex
+  - claude-code

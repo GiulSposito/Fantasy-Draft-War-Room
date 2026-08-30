@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Validação do PRD — Fantasy Draft War Room</title>
+<style>
+  :root { --bg:#fafaf9; --surface:#fff; --border:#e7e5e4; --text:#1c1917; --muted:#78716c; --strong:#16a34a; --adequate:#65a30d; --thin:#d97706; --high:#ea580c; --medium:#ca8a04; }
+  * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--text); font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  main { max-width:960px; margin:auto; padding:32px 24px 64px; } header { display:flex; justify-content:space-between; gap:24px; border-bottom:1px solid var(--border); padding-bottom:16px; } h1 { margin:0; font-size:22px; } .path, footer { color:var(--muted); font:12px ui-monospace,SFMono-Regular,monospace; } .grade { background:var(--thin); color:#fff; border-radius:8px; padding:10px 18px; font-weight:600; height:max-content; }
+  .summary, .note, details { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:18px 20px; margin-top:24px; } .summary { border-left:3px solid var(--muted); } .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; margin-top:24px; } .card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:12px 14px; } .card span { display:block; color:var(--muted); font-size:13px; }.strong{color:var(--strong)}.adequate{color:var(--adequate)}.thin{color:var(--thin)}
+  details { padding:0; overflow:hidden; } summary { cursor:pointer; padding:14px 20px; font-weight:600; } .body { padding:0 20px 18px; } article { border-top:1px solid var(--border); padding:14px 0; } article:first-child { border-top:0; } .badge { display:inline-block; border-radius:4px; padding:2px 7px; font-size:11px; font-weight:600; } .high { background:#ffedd5; color:var(--high); }.medium { background:#fef9c3; color:var(--medium); } h2 { font-size:17px; } footer { border-top:1px solid var(--border); margin-top:40px; padding-top:16px; }
+</style>
+</head>
+<body><main>
+<header><div><h1>Fantasy Draft War Room — Relatório de validação</h1><div class="path">docs/fantasy-draft-war-room-spec.md</div></div><div class="grade">Fair</div></header>
+<section class="summary"><p>O documento é uma especificação técnica excepcionalmente concreta para iniciar o MVP: o draft rápido e offline sustenta arquitetura, metas de desempenho, invariantes e roadmap. Contudo, ainda é um documento híbrido, não um PRD pronto para alimentar UX e histórias sem interpretação adicional.</p><p>É defensável iniciar o núcleo V1; antes de planejar o backlog completo, feche o contrato de dados, torne os FRs verificáveis e separe ou trace explicitamente o escopo V1.</p></section>
+<section class="cards"><div class="card"><span>Decision-readiness</span><b class="adequate">adequate</b></div><div class="card"><span>Substance over theater</span><b class="strong">strong</b></div><div class="card"><span>Strategic coherence</span><b class="adequate">adequate</b></div><div class="card"><span>Done-ness clarity</span><b class="thin">thin</b></div><div class="card"><span>Scope honesty</span><b class="thin">thin</b></div><div class="card"><span>Downstream usability</span><b class="thin">thin</b></div><div class="card"><span>Shape fit</span><b class="thin">thin</b></div></section>
+<details open><summary>Achados altos (5)</summary><div class="body">
+<article><span class="badge high">alto</span> <b>Contrato de preparação de dados V1 não decidido</b> (§§3.2, 12.2–12.3, 17.2, 23.2). Definir fluxo suportado, formato, validação, responsável e falhas.</article>
+<article><span class="badge high">alto</span> <b>FRs sem critério de aceite por capacidade</b> (§§4.2–4.8). Acrescentar cenários Given/When/Then para cada FR V1.</article>
+<article><span class="badge high">alto</span> <b>Decisões postergadas não registradas como abertas</b> (§§13–15, 29). Criar registro de premissas, owner e gatilho de revisão.</article>
+<article><span class="badge high">alto</span> <b>Faltam jornadas e rastreabilidade</b> (§§4, 17, 23–24, 31). Incluir jornadas do operador e tabela FR/NFR → versão → aceite.</article>
+<article><span class="badge high">alto</span> <b>PRD mistura requisitos e solução</b> (§§6–22, 25–28). Separar produto, arquitetura, domínio e roadmap em artefatos vinculados.</article>
+</div></details>
+<details open><summary>Achados médios (7)</summary><div class="body">
+<article><span class="badge medium">médio</span> Métricas sem baseline, alvo, owner ou contramétrica (§30).</article>
+<article><span class="badge medium">médio</span> Hipótese de valor do MVP não verificável (§§2.2, 23.5, 30, 31).</article>
+<article><span class="badge medium">médio</span> Priorização V1 não referencia FRs (§§4, 23, 27).</article>
+<article><span class="badge medium">médio</span> Limites NFR ainda usam termos não testáveis (§§5.1, 5.3, 5.6, 22.6).</article>
+<article><span class="badge medium">médio</span> Recuperação de sessão não define seleção, conflito ou corrupção (§§4.4, 5.2, 19).</article>
+<article><span class="badge medium">médio</span> Política de dados e licenças fica implícita (§§6.1, 8.1, 12, 29.1).</article>
+<article><span class="badge medium">médio</span> Glossário e contrato de nomenclatura ausentes (§§8–9, 12, 14–15, 18.6).</article>
+</div></details>
+<section class="note"><h2>Notas mecânicas</h2><ul><li>IDs de FR/NFR são contínuos e sem duplicação aparente.</li><li>Não há glossário, IDs de jornadas, IDs de métricas nem índice de premissas.</li><li>A hierarquia de títulos quebra no capítulo 23: versões usam <code>#</code> em vez de <code>##</code>.</li></ul></section>
+<footer>Rubrica: .agents/skills/bmad-prd/assets/prd-validation-checklist.md · Gerado: 2026-08-28T20:08:02-0300 · Revisor: review-rubric.md</footer>
+</main></body></html>
