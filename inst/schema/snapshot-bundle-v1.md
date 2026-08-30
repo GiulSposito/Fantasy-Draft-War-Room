@@ -132,6 +132,90 @@ marca decimal sempre `.` independente de `OutDec`, sem notação científica).
 nomeados com `length > 1` são erro (`stop()`). Reusado pelo `draft_state_hash`
 do Epic 4 (revisar se 10 casas servem para VOR/points).
 
+## Geração pelo CLI (`scripts/prepare_snapshot.R`, Story 1.4)
+
+`scripts/prepare_snapshot.R` é o **único** componente do produto com rede e o
+único que importa `ffanalytics` (AD-2). Emite os 5 arquivos do diretório do
+bundle (`players.csv`, `metrics.csv`, `metadata.json`, `qa-report.json`,
+`scoring.yml`) de forma atômica: monta num diretório temporário, calcula o
+`content_hash`, relê do disco e roda `parse_snapshot_bundle()` +
+`verify_content_hash()` + `verify_scoring_hash()`, e só então move para
+`<root>/<snapshot_id>/`. Falha em qualquer etapa → exit ≠ 0, mensagem PT-BR em
+stderr, nenhum diretório parcial.
+
+### Modo coleta (`--scoring <yaml> --season <ano> [--sources CBS,ESPN,…]`)
+
+Fluxo `ffanalytics` (commit `1955daa05efb4a1f38c9a4dee609c5c4eaf84b4d`):
+
+```r
+s <- scrape_data(src = sources, pos = c("QB","RB","WR","TE","K","DST"),
+                 season = season, week = 0)          # week 0: VOR de temporada
+p <- projections_table(s, scoring_rules = scoring_parsed,
+                       vor_baseline = cfg$vor_baseline,
+                       tier_thresholds = cfg$tier_thresholds)
+p <- add_player_info(p)                              # + first_name/last_name/team
+p <- add_adp(p); p <- add_ecr(p); p <- add_uncertainty(p)   # best-effort
+```
+
+`add_adp`/`add_ecr`/`add_uncertainty` são aplicados best-effort: um erro numa
+fonte secundária degrada a coluna opcional correspondente, não a coleta.
+
+Mapeamento cru→canônico (`projections_table` + `add_player_info` → forma crua
+comum → `build_snapshot_tables()`):
+
+| ffanalytics | canônico | Notas |
+|---|---|---|
+| `id` | `player_id` | |
+| `first_name` + `last_name` (ou `player`) | `display_name` | `normalized_name` é derivado (minúsculo, sem acento) |
+| `pos` | `position` | normalizada para o conjunto V1 |
+| `team` | `nfl_team` | |
+| `bye` | `bye_week` | quando presente |
+| `points` | `points` | |
+| `points_vor` | `vor` | |
+| `tier` | `tier` | |
+| `pos_rank` | — | usado só para derivar `tier_cliff` |
+| `floor`, `ceiling`, `sd_pts` | `floor`, `ceiling`, `sd_points` | |
+| `ecr`, `adp`, `uncertainty` | `ecr`, `adp`, `uncertainty` | opcionais |
+
+`tier_cliff` (booleano) é **derivado**: `ffanalytics` fornece `tier` (inteiro) e
+`pos_rank`; o último jogador de cada `tier` dentro da posição (maior `pos_rank`
+do grupo posição+tier) recebe `tier_cliff = TRUE` — "pegue antes do degrau".
+
+### Config de pipeline versionada (`config/snapshot_pipeline.yml`)
+
+`vor_baseline` e `tier_thresholds` (por posição, padrão liga de 12 times) e
+`pipeline_version` vêm desse arquivo, passados explicitamente ao `ffanalytics`.
+O caminho padrão é `config/snapshot_pipeline.yml`; `--pipeline-config <yaml>`
+sobrescreve. `pipeline_version` ausente/vazio aborta o CLI; `vor_baseline` ou
+`tier_thresholds` não-numérico aborta a coleta (`coleta_ffanalytics_falhou`).
+O `pipeline_version` no `metadata.json` **deve ser incrementado quando esse
+arquivo mudar** (o schema v1 ainda não pina o hash dele — reprodutibilidade de
+`vor`/`tier` depende do bump).
+
+### Modo fallback CSV (`--from-csv <csv> --metadata <json> [--season <ano>]`)
+
+Aceita um CSV manual na forma crua comum (com as colunas obrigatórias, incluindo
+`tier_cliff` — ausência → `snapshot_coluna_ausente` na releitura). Não exige
+`ffanalytics`. `source_list = ["manual-csv"]`. A temporada vem de `--season` ou
+do campo `season` do JSON de `--metadata`.
+
+### `snapshot_id` e diretório de saída
+
+Cada execução gera `snapshot_id = "snap-<season>-<AAAAMMDDTHHMMSSZ em UTC>"`. O
+diretório raiz é `tools::R_user_dir("fantasydraftwarroom", "data")/snapshots` ou
+`--out <dir>`. Se `<root>/<snapshot_id>/` já existir, aborta com
+`bundle_ja_existe` sem sobrescrever. Raiz não gravável →
+`bundle_saida_nao_gravavel`.
+
+### Erros de domínio adicionais (Story 1.4)
+
+| `code` | Quando |
+|---|---|
+| `coleta_ffanalytics_falhou` | `scrape_data`/`projections_table` lançou ou voltou vazio; contrato de colunas mudou; `pos_rank` ausente para derivar `tier_cliff` |
+| `ffanalytics_ausente` | Modo coleta com o pacote `ffanalytics` não instalado |
+| `bundle_saida_nao_gravavel` | Diretório raiz de saída sem permissão de escrita ou falha ao gravar/mover |
+| `bundle_ja_existe` | `<root>/<snapshot_id>/` já existe — nada é sobrescrito |
+
 ## Erros de domínio
 
 | `code` | Quando |

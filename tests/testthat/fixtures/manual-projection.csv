@@ -1,0 +1,6 @@
+player_id,display_name,position,nfl_team,bye_week,points,vor,tier,tier_cliff,adp,floor,ceiling
+m1,Josh Allen,QB,BUF,12,380.5,95.2,1,TRUE,2.4,300.1,430.9
+m2,Christian McCaffrey,RB,SF,9,310.1,110.7,1,TRUE,1.1,240.0,360.4
+m3,Justin Jefferson,WR,MIN,6,290.0,80.3,2,FALSE,3.7,220.5,340.2
+m4,San Francisco,D/ST,SF,9,130.2,15.0,4,FALSE,145.9,90.0,170.0
+m5,Travis Kelce,TE,KC,10,210.4,45.6,2,TRUE,18.2,,

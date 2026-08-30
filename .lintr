@@ -1,7 +1,8 @@
 linters: linters_with_defaults(
     object_name_linter("snake_case"),
     line_length_linter(120L),
-    assignment_linter()
+    assignment_linter(),
+    object_length_linter(40L)
   )
 exclusions: list(
     "renv",

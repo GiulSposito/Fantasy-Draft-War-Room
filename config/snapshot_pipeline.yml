@@ -1,0 +1,30 @@
+# Configuracao versionada do pipeline de preparo do snapshot (Story 1.4).
+#
+# Dado validado, nao comportamento. Passado explicitamente ao `ffanalytics`
+# (`projections_table(vor_baseline=, tier_thresholds=)`). Quando qualquer valor
+# abaixo mudar, incremente `pipeline_version` -- a reprodutibilidade de
+# `vor`/`tier` do bundle depende disso (o schema v1 do metadata ainda nao pina
+# o hash deste arquivo; ver "Lacuna conhecida" na spec).
+#
+# Racional: liga padrao de 12 times (referencia nao-normativa). `vor_baseline` e
+# o rank do jogador "replacement level" por posicao; `tier_thresholds` e o fator
+# de escala do agrupamento em tiers do `ffanalytics`
+# (`tier = 1 + trunc((cumsum(dropoff) - dropoff[1]) / (pts_sd * threshold))`),
+# baixo = mais tiers. Valores partem do default do pacote no commit fixado.
+pipeline_version: "0.1.0"
+
+vor_baseline:
+  QB: 13
+  RB: 35
+  WR: 36
+  TE: 13
+  K: 8
+  DST: 3
+
+tier_thresholds:
+  QB: 1.0
+  RB: 1.0
+  WR: 1.0
+  TE: 1.0
+  K: 1.0
+  DST: 0.1

@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-30-2026 12:00
-last_updated: 08-30-2026 18:30
+last_updated: 08-30-2026 21:30
 project: Fantasy Draft War Room
 project_key: NOKEY
 tracking_system: file-system
@@ -39,7 +39,7 @@ development_status:
   1-1-scaffold-do-pacote-r-e-composition-root: done
   1-2-contrato-e-schema-do-snapshot-bundle: done
   1-3-hash-canônico-do-manifesto-do-bundle: done
-  1-4-cli-scripts-prepare_snapshot-r: backlog
+  1-4-cli-scripts-prepare_snapshot-r: review
   1-5-validação-de-qualidade-do-snapshot: backlog
   1-6-design-tokens-base-e-tema-escuro: backlog
   1-7-superfície-selecionar-e-validar-snapshot: backlog

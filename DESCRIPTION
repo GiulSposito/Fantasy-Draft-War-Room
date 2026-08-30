@@ -20,10 +20,15 @@ Imports:
     utils,
     yaml (>= 2.3.0)
 Suggests:
+    callr,
     config,
     devtools,
+    ffanalytics,
     lintr,
+    pkgload,
     roxygen2,
     testthat (>= 3.0.0),
     withr
+Remotes:
+    FantasyFootballAnalytics/ffanalytics@1955daa05efb4a1f38c9a4dee609c5c4eaf84b4d
 Config/testthat/edition: 3

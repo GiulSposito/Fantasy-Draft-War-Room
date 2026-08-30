@@ -149,3 +149,191 @@ read_scoring_config <- function(scoring_path) {
   }
   out
 }
+
+# --- Story 1.4: CSV manual + escrita do bundle ------------------------------
+
+#' Le um CSV de projecoes manual (modo fallback) na forma crua comum
+#'
+#' Leitura crua apenas: nao valida colunas nem tipos -- isso e o dominio
+#' ([build_snapshot_tables()]) e o parser da releitura.
+#'
+#' @param csv_path Caminho para o CSV manual.
+#' @return `data.frame` (strings sem fator, nomes de coluna preservados); ou um
+#'   [domain_error()] `"bundle_arquivo_ausente"` / `"bundle_formato_invalido"`.
+#' @export
+read_manual_projection_csv <- function(csv_path) {
+  stopifnot(is.character(csv_path), length(csv_path) == 1L, nzchar(csv_path))
+  if (!file.exists(csv_path) || dir.exists(csv_path)) {
+    return(domain_error(
+      "bundle_arquivo_ausente",
+      sprintf("Arquivo de projecoes manual ausente: %s.", basename(csv_path)),
+      list(arquivo = basename(csv_path))
+    ))
+  }
+  read_bundle_csv(csv_path, basename(csv_path))
+}
+
+#' Le o JSON de overrides de metadata do modo CSV manual
+#'
+#' @param json_path Caminho para o JSON (`--metadata`).
+#' @return Lista parseada; ou um [domain_error()] `"bundle_arquivo_ausente"` /
+#'   `"bundle_formato_invalido"` (JSON malformado ou que nao e um objeto).
+#' @export
+read_metadata_overrides <- function(json_path) {
+  stopifnot(is.character(json_path), length(json_path) == 1L, nzchar(json_path))
+  if (!file.exists(json_path) || dir.exists(json_path)) {
+    return(domain_error(
+      "bundle_arquivo_ausente",
+      sprintf("Arquivo de metadata ausente: %s.", basename(json_path)),
+      list(arquivo = basename(json_path))
+    ))
+  }
+  out <- read_bundle_json(json_path, basename(json_path))
+  if (is_domain_error(out)) {
+    return(out)
+  }
+  if (!is.list(out) || is.data.frame(out) || is.null(names(out))) {
+    return(snapshot_format_error(basename(json_path), "não é um objeto JSON"))
+  }
+  out
+}
+
+#' Resolve o diretorio raiz onde os bundles sao gravados
+#'
+#' @param out_override `--out` do CLI (ou `NULL`).
+#' @return `out_override` expandido, ou
+#'   `tools::R_user_dir("fantasydraftwarroom", "data")/snapshots`.
+#' @export
+resolve_snapshot_root <- function(out_override = NULL) {
+  if (!is.null(out_override) && nzchar(out_override)) {
+    return(path.expand(out_override))
+  }
+  file.path(tools::R_user_dir("fantasydraftwarroom", "data"), "snapshots")
+}
+
+# Escreve um data.frame como CSV canonico do bundle: UTF-8, LF, sem row names,
+# celula vazia para NA (o parser exige "" e nao "NA" em opcionais).
+snapshot_write_bundle_csv <- function(df, path) {
+  utils::write.csv(df, path, row.names = FALSE, na = "", fileEncoding = "UTF-8")
+}
+
+# Escreve uma lista como JSON do bundle. `source_list`/`findings` como array
+# mesmo com 1 elemento; escalares desembrulhados.
+snapshot_write_bundle_json <- function(x, path) {
+  if (!is.null(x$source_list)) {
+    x$source_list <- as.list(as.character(x$source_list))
+  }
+  jsonlite::write_json(x, path, auto_unbox = TRUE, pretty = TRUE, null = "null")
+}
+
+#' Grava um snapshot bundle de forma atomica (5 arquivos + hash de conteudo)
+#'
+#' Monta os 5 arquivos num diretorio temporario dentro de `root`, calcula o
+#' `content_hash` (grava `metadata.json` com placeholder -> [snapshot_content_hash()]
+#' -> reescreve), e so entao `file.rename` para `<root>/<snapshot_id>/`. Falha
+#' em qualquer etapa remove o temporario; nada parcial em disco. Recusa
+#' diretorio de destino ja existente e raiz nao gravavel.
+#'
+#' @param root Diretorio raiz (de [resolve_snapshot_root()]).
+#' @param snapshot_id Id da execucao (nome do diretorio final).
+#' @param players,metrics `data.frame` canonicos ([build_snapshot_tables()]).
+#' @param metadata Lista de metadata **sem** `content_hash`
+#'   ([build_snapshot_metadata()]).
+#' @param qa_report Lista do `qa-report.json` ([build_qa_report()]).
+#' @param scoring_text Texto cru do YAML de scoring (copia byte-a-byte).
+#' @return Caminho do diretorio do bundle gravado; ou um [domain_error()]
+#'   (`bundle_saida_nao_gravavel`, `bundle_ja_existe`, ou o erro de hash).
+#' @export
+write_snapshot_bundle <- function(root, snapshot_id, players, metrics,
+                                  metadata, qa_report, scoring_text) {
+  if (!dir.exists(root)) {
+    created <- dir.create(root, recursive = TRUE, showWarnings = FALSE)
+    if (!created) {
+      return(domain_error(
+        "bundle_saida_nao_gravavel",
+        sprintf("Nao foi possivel criar o diretorio de saida: %s.", root),
+        list(root = root)
+      ))
+    }
+  }
+  if (file.access(root, mode = 2L) != 0L) {
+    return(domain_error(
+      "bundle_saida_nao_gravavel",
+      sprintf("Diretorio de saida sem permissao de escrita: %s.", root),
+      list(root = root)
+    ))
+  }
+
+  target <- file.path(root, snapshot_id)
+  if (file.exists(target)) {
+    return(domain_error(
+      "bundle_ja_existe",
+      sprintf("O bundle '%s' ja existe em %s -- nada foi sobrescrito.", snapshot_id, root),
+      list(snapshot_id = snapshot_id, bundle_dir = target)
+    ))
+  }
+
+  tmp <- tempfile(pattern = "tmp-snapshot-", tmpdir = root)
+  if (!dir.create(tmp, showWarnings = FALSE)) {
+    return(domain_error(
+      "bundle_saida_nao_gravavel",
+      sprintf("Nao foi possivel criar o diretorio temporario em %s.", root),
+      list(root = root)
+    ))
+  }
+  cleanup <- function() unlink(tmp, recursive = TRUE, force = TRUE)
+
+  written <- tryCatch(
+    {
+      snapshot_write_bundle_csv(players, file.path(tmp, "players.csv"))
+      snapshot_write_bundle_csv(metrics, file.path(tmp, "metrics.csv"))
+      writeBin(charToRaw(enc2utf8(scoring_text)), file.path(tmp, "scoring.yml"))
+      snapshot_write_bundle_json(qa_report, file.path(tmp, "qa-report.json"))
+      snapshot_write_bundle_json(
+        c(metadata, list(content_hash = "0")),
+        file.path(tmp, "metadata.json")
+      )
+      TRUE
+    },
+    error = function(e) e
+  )
+  if (inherits(written, "error")) {
+    cleanup()
+    return(domain_error(
+      "bundle_saida_nao_gravavel",
+      sprintf("Falha ao gravar arquivos do bundle: %s", conditionMessage(written)),
+      list(root = root, causa = conditionMessage(written))
+    ))
+  }
+
+  raw_files <- read_bundle_files_raw(tmp)
+  if (is_domain_error(raw_files)) {
+    cleanup()
+    return(raw_files)
+  }
+  meta_read <- read_snapshot_bundle(tmp)
+  if (is_domain_error(meta_read)) {
+    cleanup()
+    return(meta_read)
+  }
+  meta_parsed <- meta_read$metadata
+  content_hash <- snapshot_content_hash(raw_files, meta_parsed)
+  if (is_domain_error(content_hash)) {
+    cleanup()
+    return(content_hash)
+  }
+  snapshot_write_bundle_json(
+    c(metadata, list(content_hash = content_hash)),
+    file.path(tmp, "metadata.json")
+  )
+
+  if (!file.rename(tmp, target)) {
+    cleanup()
+    return(domain_error(
+      "bundle_saida_nao_gravavel",
+      sprintf("Nao foi possivel mover o bundle para %s.", target),
+      list(root = root, target = target)
+    ))
+  }
+  target
+}
