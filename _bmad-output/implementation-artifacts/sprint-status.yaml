@@ -37,7 +37,7 @@ story_location: _bmad-output/implementation-artifacts
 development_status:
   epic-1: in-progress
   1-1-scaffold-do-pacote-r-e-composition-root: done
-  1-2-contrato-e-schema-do-snapshot-bundle: review
+  1-2-contrato-e-schema-do-snapshot-bundle: done
   1-3-hash-canônico-do-manifesto-do-bundle: backlog
   1-4-cli-scripts-prepare_snapshot-r: backlog
   1-5-validação-de-qualidade-do-snapshot: backlog
