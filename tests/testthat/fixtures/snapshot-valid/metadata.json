@@ -1,0 +1,11 @@
+{
+  "snapshot_id": "snap-2025-0001",
+  "season": 2025,
+  "generated_at": "2025-08-30T12:00:00Z",
+  "pipeline_version": "0.1.0",
+  "source_list": ["CBS", "ESPN", "FantasyPros"],
+  "scoring_hash": "478c0f17773965b1afb4ced38ed62bedcf8fba0bbfcd0b621ca4852c7e372c90",
+  "content_hash": "c04df2d46b5852a117471d87d9fe821bab608d268f00380b93fd404461caf0a5",
+  "qa_summary": "4 jogadores, 0 bloqueios",
+  "schema_version": "snapshot-bundle-v1"
+}

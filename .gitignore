@@ -1,2 +1,11 @@
-config/
+config/config.yml
+config/*.local.yml
 .DS_Store
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+
+# Artefatos de build do pacote
+*.tar.gz
+*.Rcheck/
