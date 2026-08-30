@@ -218,6 +218,64 @@ diretório raiz é `tools::R_user_dir("fantasydraftwarroom", "data")/snapshots` 
 | `bundle_saida_nao_gravavel` | Diretório raiz de saída sem permissão de escrita ou falha ao gravar/mover |
 | `bundle_ja_existe` | `<root>/<snapshot_id>/` já existe — nada é sobrescrito |
 
+## Validação de qualidade (Story 1.5)
+
+`validate_snapshot_quality(deserialized, active_scoring_parsed)`
+(`R/domain_snapshot_quality.R`, domínio puro) roda **todas** as checagens abaixo
+sobre o bundle **desserializado cru** (`read_snapshot_bundle()`) mais o
+`scoring.yml` ativo já parseado, em modo **coletar-tudo** (nunca aborta no
+primeiro problema), e devolve uma lista ordenada de achados
+`list(code, severity, message, details)`. Não altera `parse_snapshot_bundle()`
+nem re-roda a coleta. É a fonte da lista consumida pelo gate de início
+(Epic 2, Story 2.6) e pela superfície "Qualidade do snapshot" (Story 1.7).
+
+Se `deserialized` já for um `domain_error` (o adapter falhou), a saída é
+**um** único achado bloqueante que preserva o `code`, a mensagem e os detalhes
+do erro. Se `deserialized` não for lista nem `domain_error`, a saída é um único
+`snapshot_bundle_ilegivel`. Se `active_scoring_parsed` for um `domain_error`
+(o `read_scoring_config` falhou), a saída inclui um `snapshot_scoring_indisponivel`
+(preserva `code`/`message` do erro) e a checagem de hash de scoring é pulada.
+
+| Checagem | `code` | Severidade | `details` |
+|---|---|---|---|
+| `deserialized` não é lista nem `domain_error` | `snapshot_bundle_ilegivel` | bloqueante | — |
+| Campo obrigatório de jogador `NA` ou coluna ausente (todos os obrigatórios de `players`/`metrics`, `player_id` incluso, por tabela) | `snapshot_campo_obrigatorio_ausente` | bloqueante | `campo`, `player_id`, `tabela` |
+| `metadata` presente mas não é objeto JSON (array / escalar) | `snapshot_metadado_ilegivel` | bloqueante | — |
+| Metadado obrigatório ausente/nulo/vazio ou todo `NA` (inclui multi-elemento) | `snapshot_metadado_ausente` | bloqueante | `campo` |
+| `player_id` repetido em `players.csv` ou `metrics.csv` | `snapshot_player_id_duplicado` | bloqueante | `player_id` |
+| Nome ambíguo: `(normalized_name, position normalizada, nfl_team)` repetida em 2+ `player_id` (`nfl_team` `NA` em ambos não distingue; linhas com `normalized_name` em branco são ignoradas) | `snapshot_nome_ambiguo` | bloqueante | `normalized_name`, `player_ids` |
+| `position` fora do conjunto V1 após `normalize_position()` | `snapshot_posicao_fora_do_v1` | bloqueante | `player_id`, `raw` |
+| `adp` informado (inclui `NaN` numérico) mas não `> 0` e finito | `snapshot_adp_invalido` | bloqueante | `player_id`, `valor` |
+| `active_scoring_parsed` é um `domain_error` | `snapshot_scoring_indisponivel` | bloqueante | `code` |
+| `scoring_config_hash(ativo)` ≠ `metadata$scoring_hash` (via `verify_scoring_hash()`) | `snapshot_scoring_incompativel` | bloqueante | `esperado`, `encontrado` |
+| `qa-report` ausente, não é objeto, ou objeto sem a chave `findings` | `qa_report_ausente` | bloqueante | — |
+| Entrada de `qa_report$findings` com `severity = "bloqueante"` (uma por entrada, preserva `code`/`message`) | `qa_report_bloqueante` | bloqueante | `qa_code` |
+| Entrada de `qa_report$findings` com outra severidade | `qa_report_aviso` | aviso | `qa_code`, `severity` |
+| Campo opcional ausente ou todo `NA` (`floor`/`ceiling`/`sd_points`/`ecr`/`adp`/`adp_sd`/`uncertainty`/`nfl_team`/`bye_week`) | `snapshot_opcional_ausente` | aviso | `campo` |
+| Posição do conjunto V1 sem nenhum jogador | `snapshot_cobertura_anomala` | aviso | `posicao` |
+
+`qa_report$findings: []` (o que a Story 1.4 emite) **não** é um achado — só a
+ausência da chave `findings` é.
+
+Mínimos numéricos de cobertura por posição são referência **não-normativa** e
+ficam fora do V1 (só "posição totalmente ausente" é aviso). `adp` **não tem
+limite superior**: um ADP alto é um jogador que sai tarde ou não é draftado —
+dado legítimo; apenas `<= 0` ou não-finito bloqueia.
+
+`verify_content_hash` precisa dos bytes crus dos arquivos e é responsabilidade
+do chamador (superfície / gate), **não** de `validate_snapshot_quality` (que
+recebe só o desserializado) — content hash não entra na lista coletar-tudo.
+
+**Ordenação canônica** (determinística, independente de locale): `severity`
+(`bloqueante` = 0, `aviso` = 1), depois `code` em ordem de byte
+(`order(method = "radix")`), depois uma chave estável derivada de `details`
+(pares `nome=valor` ordenados). Duas execuções sobre a mesma entrada produzem
+uma lista `identical()`.
+
+Uma entrada estruturalmente saudável (fixture `snapshot-valid`) com scoring
+compatível produz **zero achados `bloqueante`** — avisos por opcionais ausentes
+ou cobertura anômala são aceitáveis.
+
 ## Erros de domínio
 
 | `code` | Quando |

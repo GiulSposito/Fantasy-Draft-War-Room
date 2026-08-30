@@ -49,3 +49,7 @@ Itens reais levantados durante o build, fora do escopo da story que os expôs. C
 - source_spec: `spec-1-4-cli-prepare-snapshot.md`
   summary: `.lintr` teve o `object_length_linter` alargado de 30 para 40 para acomodar o nome `collect_ffanalytics_projections` (31 caracteres), mandado pela spec.
   evidence: Config foi afrouxada para caber no código em vez de encurtar o nome. Decidir: manter o limite relaxado (vários style guides de R permitem nomes mais longos) ou encurtar o nome e restaurar o default.
+
+- source_spec: `spec-1-5-validacao-qualidade-snapshot.md`
+  summary: A lista coletar-tudo de `validate_snapshot_quality()` não inclui a completude do join (`player_id` em só um dos CSVs) nem a validação do *valor* de `schema_version`.
+  evidence: O parser (`parse_snapshot_bundle`, fail-fast) cobre os dois (`snapshot_join_incompleto`, `snapshot_schema_incompativel`) e também é rodado pela superfície da Story 1.7. O I/O Matrix congelado da 1.5 não lista essas checagens. Se a superfície precisar delas na lista unificada de achados, adicionar em `domain_snapshot_quality.R` numa story futura.
