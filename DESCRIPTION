@@ -1,0 +1,24 @@
+Package: fantasydraftwarroom
+Title: Fantasy Draft War Room
+Version: 0.0.0.9000
+Authors@R:
+    person("Giuliano", "Sposito", email = "gsposito@gmail.com", role = c("aut", "cre"))
+Description: Aplicativo Shiny local para conduzir drafts de fantasy football a
+    partir de um snapshot canonico de projecoes validado offline. Arquitetura
+    hexagonal: nucleo de dominio puro, shell imperativo (composition root,
+    adaptadores de I/O).
+License: GPL-3
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Depends:
+    R (>= 4.6)
+Imports:
+    shiny (>= 1.14.0)
+Suggests:
+    config,
+    devtools,
+    lintr,
+    roxygen2,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3

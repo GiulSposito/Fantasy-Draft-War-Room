@@ -1,0 +1,14 @@
+^_bmad$
+^_bmad-output$
+^docs$
+^\.claude$
+^\.agents$
+^config$
+^app\.R$
+^\.lintr$
+^\.gitignore$
+^\.Rproj\.user$
+^.*\.Rproj$
+^renv$
+^renv\.lock$
+^\.git$

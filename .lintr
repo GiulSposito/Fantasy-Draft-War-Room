@@ -1,0 +1,10 @@
+linters: linters_with_defaults(
+    object_name_linter("snake_case"),
+    line_length_linter(120L),
+    assignment_linter()
+  )
+exclusions: list(
+    "renv",
+    "tests/testthat.R",
+    "app.R" = list(object_usage_linter = Inf)
+  )
