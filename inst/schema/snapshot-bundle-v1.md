@@ -178,8 +178,10 @@ comum → `build_snapshot_tables()`):
 | `ecr`, `adp`, `uncertainty` | `ecr`, `adp`, `uncertainty` | opcionais |
 
 `tier_cliff` (booleano) é **derivado**: `ffanalytics` fornece `tier` (inteiro) e
-`pos_rank`; o último jogador de cada `tier` dentro da posição (maior `pos_rank`
-do grupo posição+tier) recebe `tier_cliff = TRUE` — "pegue antes do degrau".
+`pos_rank`; o jogador de maior `pos_rank` de um `tier` que tem um tier pior
+depois dele na mesma posição recebe `tier_cliff = TRUE` — "pegue antes do
+degrau". O último jogador do tier final de cada posição é `FALSE` (não há
+próximo tier).
 
 ### Config de pipeline versionada (`config/snapshot_pipeline.yml`)
 

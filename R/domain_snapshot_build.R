@@ -34,14 +34,17 @@ snapshot_normalized_name <- function(x) {
 
 #' Deriva `tier_cliff` a partir de `pos_rank` e `tier` dentro da posicao
 #'
-#' V1: o ultimo jogador de cada `tier` por posicao (maior `pos_rank` do grupo
-#' posicao+tier) recebe `TRUE` -- "pegue antes do degrau".
+#' V1: o ultimo jogador (maior `pos_rank`) de um `tier` que **tem um tier pior
+#' depois dele na mesma posicao** recebe `TRUE` -- "pegue antes do degrau". O
+#' unico jogador de menor rank da posicao (fundo do ultimo tier) e `FALSE`: nao
+#' ha proximo tier para se antecipar.
 #'
 #' @param position Vetor de posicoes ja normalizadas.
 #' @param pos_rank Vetor de rank posicional (coercivel a numero, sem `NA`).
 #' @param tier Vetor de tier (coercivel a numero, sem `NA`).
 #' @return Vetor logico do mesmo comprimento, ou um [domain_error()]
-#'   `"coleta_ffanalytics_falhou"` se `pos_rank`/`tier` nao derem para agrupar.
+#'   `"coleta_ffanalytics_falhou"` se `position`/`pos_rank`/`tier` nao derem
+#'   para agrupar.
 #' @export
 derive_tier_cliff <- function(position, pos_rank, tier) {
   stopifnot(
@@ -66,8 +69,11 @@ derive_tier_cliff <- function(position, pos_rank, tier) {
     ))
   }
   key <- paste(pos_chr, tr, sep = "|")
-  grp_max <- tapply(pr, key, max)
-  unname(as.logical(pr == grp_max[key]))
+  grp_max_rank <- tapply(pr, key, max)
+  pos_max_tier <- tapply(tr, pos_chr, max)
+  is_group_last <- pr == grp_max_rank[key]
+  has_worse_successor <- pos_max_tier[pos_chr] > tr
+  unname(as.logical(is_group_last & has_worse_successor))
 }
 
 #' Monta o `snapshot_id` da execucao

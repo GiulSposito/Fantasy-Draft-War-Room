@@ -36,13 +36,26 @@ test_that("snapshot_normalized_name: vetorizado", {
 
 # --- derive_tier_cliff ---------------------------------------------------
 
-test_that("derive_tier_cliff: ultimo de cada tier por posicao vira TRUE", {
+test_that("derive_tier_cliff: ultimo de um tier COM sucessor pior vira TRUE", {
   pos <- c("RB", "RB", "RB", "WR", "WR", "QB")
   rank <- c(1, 2, 3, 1, 2, 1)
   tier <- c(1, 1, 2, 1, 1, 1)
+  # RB tier1 tem um tier2 depois -> seu ultimo (rank2) e TRUE.
+  # RB tier2 e o tier final da posicao -> rank3 FALSE. WR/QB tem um tier so.
   expect_identical(
     derive_tier_cliff(pos, rank, tier),
-    c(FALSE, TRUE, TRUE, FALSE, TRUE, TRUE)
+    c(FALSE, TRUE, FALSE, FALSE, FALSE, FALSE)
+  )
+})
+
+test_that("derive_tier_cliff: tier do meio em posicao de 3 tiers e TRUE, tier final FALSE", {
+  pos <- rep("RB", 5)
+  rank <- c(1, 2, 3, 4, 5)
+  tier <- c(1, 1, 2, 3, 3)
+  # tier1 last (rank2) TRUE; tier2 unico (rank3) TRUE; tier3 last (rank5) FALSE.
+  expect_identical(
+    derive_tier_cliff(pos, rank, tier),
+    c(FALSE, TRUE, TRUE, FALSE, FALSE)
   )
 })
 
@@ -76,11 +89,12 @@ test_that("modo coleta: monta players/metrics e deriva normalized_name/tier_clif
   expect_identical(out$players$normalized_name[out$players$player_id == "f6"], "ja'marr chase")
   expect_type(out$metrics$tier, "integer")
   expect_type(out$metrics$tier_cliff, "logical")
-  # RB: f2 rank1/tier1, f3 rank2/tier1 (cliff), f4 rank3/tier2 (cliff)
+  # RB tiers 1,2: f3 (rank2/tier1, tier2 existe) -> cliff; f4 (rank3/tier2,
+  # tier final da posicao) -> FALSE; f2 (rank1/tier1) -> FALSE.
   cliff <- setNames(out$metrics$tier_cliff, out$metrics$player_id)
   expect_false(cliff[["f2"]])
   expect_true(cliff[["f3"]])
-  expect_true(cliff[["f4"]])
+  expect_false(cliff[["f4"]])
 })
 
 test_that("modo CSV manual: usa tier_cliff dado, nao deriva", {

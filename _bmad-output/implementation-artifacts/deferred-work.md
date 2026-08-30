@@ -43,10 +43,6 @@ Itens reais levantados durante o build, fora do escopo da story que os expôs. C
   evidence: Em 1.4 `findings` é sempre `list()` → `[]`, então não há bug. Quando a Story 1.5 popular achados, estender a coerção de array para cobrir `findings` (ou o `qa-report.json` de um bundle com exatamente um achado quebra o schema).
 
 - source_spec: `spec-1-4-cli-prepare-snapshot.md`
-  summary: Semântica do `tier_cliff` — o último jogador do tier *final* de cada posição recebe `TRUE` mesmo sem um tier pior depois dele.
-  evidence: A implementação segue a redação congelada do I/O Matrix ("último jogador de cada tier por posição"). Mas o conceito de "cliff" da visão implica um degrau para um tier pior a seguir. Decisão de produto do operador: manter, ou restringir a flag aos tiers que têm sucessor. Custo da mudança: uma linha em `derive_tier_cliff()`.
-
-- source_spec: `spec-1-4-cli-prepare-snapshot.md`
   summary: `write_snapshot_bundle()` move o diretório temporário para o caminho final *antes* de `prepare_snapshot()` rodar o parser + a verificação de hash.
   evidence: Um bundle formado mas ainda não verificado existe brevemente no caminho final (`<root>/<snapshot_id>/`), removido por `unlink` na falha. A intenção da spec ("mover só no sucesso") é substancialmente honrada (tmp dir durante toda a montagem); só a verificação final acontece pós-rename. Considerar verificar o tmp dir antes do rename.
 

@@ -53,7 +53,7 @@ context:
 | CSV fallback sem campo obrigatório | CSV sem `tier_cliff` | exit ≠ 0, sem bundle | `snapshot_coluna_ausente` (parser) |
 | Posição fora do V1 na coleta | fonte traz `pos = "FB"` | exit ≠ 0, nenhum bundle parcial | `snapshot_posicao_invalida` |
 | Saída não gravável | `--out` sem permissão de escrita | exit ≠ 0, mensagem acionável, sem bundle | `domain_error("bundle_saida_nao_gravavel")` |
-| `tier_cliff` derivado | linhas com `tier`/`pos_rank` por posição | último jogador de cada `tier` por posição → `tier_cliff = TRUE` | N/A |
+| `tier_cliff` derivado | linhas com `tier`/`pos_rank` por posição | último jogador (maior `pos_rank`) de cada `tier` **que tem um tier pior depois**, por posição → `tier_cliff = TRUE`; o último jogador do tier final de cada posição → `FALSE` | N/A |
 
 </frozen-after-approval>
 
@@ -88,7 +88,7 @@ context:
 - [ ] `R/application_prepare_snapshot.R` — `prepare_snapshot(collect_fn, write_fn, clock, scoring_raw_text, scoring_parsed, pipeline_config, season, source_list)`: orquestra domínio + ports; após `write_fn`, relê o bundle e roda `parse_snapshot_bundle` + `verify_content_hash` + `verify_scoring_hash`; `domain_error` aborta e remove o diretório.
 - [ ] `scripts/prepare_snapshot.R` — CLI (`pkgload::load_all`): args `--scoring` (default `config/score_settings.yml`), `--pipeline-config`, `--season`, `--sources`, `--from-csv`, `--metadata`, `--out`; monta `collect_fn`; injeta `clock = function() Sys.time()`; `domain_error` → mensagem + `quit(status = 1L)`; sucesso → imprime `bundle_dir` e `snapshot_id`, `quit(status = 0L)`.
 - [ ] `NAMESPACE` — `#' @export` + `devtools::document()` nas funções públicas novas.
-- [ ] `inst/schema/snapshot-bundle-v1.md` — seção "Geração pelo CLI": fluxo `ffanalytics`, mapeamento de colunas, config de pipeline versionada, `tier_cliff` = último de cada tier por posição, modo fallback CSV, `snapshot_id`.
+- [ ] `inst/schema/snapshot-bundle-v1.md` — seção "Geração pelo CLI": fluxo `ffanalytics`, mapeamento de colunas, config de pipeline versionada, `tier_cliff` = último de cada tier que tem um tier pior depois, por posição, modo fallback CSV, `snapshot_id`.
 - [ ] `tests/testthat/fixtures/` — `manual-projection.csv` (colunas obrigatórias) e `ffanalytics-flat.csv` (`data.frame` cru simulando a saída achatada do adapter, para testar domínio + orquestração sem rede).
 - [ ] `tests/testthat/test-domain_snapshot_build.R` — cobre a Matrix no nível de domínio; locale forçado.
 - [ ] `tests/testthat/test-application_prepare_snapshot.R` — orquestração com `collect_fn`/`write_fn` fakes e clock fixo (sucesso, falha de coleta, duas execuções, posição inválida).
@@ -101,6 +101,18 @@ context:
 - Given falha de coleta, scoring inválido ou `ffanalytics` ausente, when o script roda, then ele termina com exit code ≠ 0 e mensagem acionável, sem emitir bundle nem diretório parcial.
 - Given `R/domain_snapshot_build.R`, when inspecionado, then não abre arquivos, não importa `ffanalytics`/`yaml` e não lê o clock.
 - Given um clone limpo, when `renv::restore()` e `devtools::test()`, then a suíte passa sem acessar a rede, inclusive num lib onde `ffanalytics` não está instalado.
+
+## Spec Change Log
+
+- **2026-08-30 — review adversarial round 1 (patches, sem loopback).** blind-hunter, edge-case-hunter e verification-gap revisaram o diff. Nenhum `intent_gap`/`bad_spec`; 11 patches aplicados:
+  - **Cobertura de teste:** novo `test-adapter_ffanalytics.R` (`ffanalytics_flatten` puro + o caso `ffanalytics_ausente` da Matrix, antes descoberto) e novo `test-cli_prepare_snapshot.R` via `callr::rscript` (o CLI só era exercitado por comando manual) + fixture `manual-metadata.json`; `callr` em Suggests.
+  - **Robustez do CLI:** `tryCatch` no topo → toda falha vira mensagem PT-BR + exit 1; `or_default`/`resolve_season` tratam `character(0)`/`NA`; allowlist de flags (rejeita desconhecida/repetida/valor-que-parece-flag); `--sources` vazio, range de temporada, `pipeline_version`/`vor_baseline`/`tier_thresholds` validados; bloco `file.exists` morto removido.
+  - **`ffanalytics_flatten` endurecido:** `id` `NA`/vazio, sem coluna de nome, `avg_type` sem `"average"`, drift de contrato → `domain_error`.
+  - **Verificação:** `prepare_snapshot_verify` relê `scoring.yml` do disco (antes comparava o objeto em memória consigo mesmo — tautologia); `write_snapshot_bundle` guarda a releitura do tmp.
+  - **Guardas de input:** `derive_tier_cliff` (comprimento/`NA`), `new_snapshot_id` (`season`/instante `NA`), `build_snapshot_tables` (`player_id` duplicado/vazio).
+  - **KEEP:** bloco frozen; fronteiras hexagonais; dança do `content_hash`; `ffanalytics` em Suggests+Remotes.
+  - **Adiados** (`deferred-work.md`): JSON do bundle via `jsonlite` (não `canonical_json`); coerção de `findings` p/ array na 1.5; verify pós-rename; `.lintr` alargado 30→40.
+- **2026-08-30 — renegociação da semântica do `tier_cliff` (operador).** O operador resolveu o item adiado: "siga a redação e estratégia original". `tier_cliff = TRUE` passa a marcar só o último jogador de um `tier` **que tem um tier pior depois** dentro da posição; o último do tier final de cada posição → `FALSE`. Alinha a linha do I/O Matrix (renegociada) com a redação "antes de uma mudança de tier" e o conceito de "Tier Cliff" da visão. Mudança de uma linha em `derive_tier_cliff()` + expectativas de teste. O item correspondente saiu de `deferred-work.md`.
 
 ## Design Notes
 
@@ -115,7 +127,7 @@ context:
   ```
   Colunas consumidas: `id, pos, points, points_vor, tier, dropoff, pos_rank, floor, ceiling, sd_pts` + `player, team, bye` + `adp, ecr, uncertainty`.
 - **`config/score_settings.yml` já é o objeto `scoring`** do `ffanalytics` — passa direto como `scoring_rules`. O `scoring.yml` do bundle é cópia byte-a-byte; `scoring_config_hash(yaml parseado) == metadata$scoring_hash`.
-- **`tier_cliff`:** `ffanalytics` fornece `tier` (inteiro) e `dropoff` (Δ pontos ao próximo), não um booleano. V1: `tier_cliff = TRUE` para o jogador de menor `pos_rank` antes de uma mudança de `tier` dentro da posição (o último de cada tier) — "pegue antes do degrau".
+- **`tier_cliff`:** `ffanalytics` fornece `tier` (inteiro) e `dropoff` (Δ pontos ao próximo), não um booleano. V1: `tier_cliff = TRUE` para o último jogador (maior `pos_rank`) de cada `tier` **que ainda tem um tier pior depois** dentro da posição — "pegue antes do degrau para um tier pior". O último jogador do tier final de cada posição não é degrau (não há tier pior a seguir) → `FALSE`. Alinha com a redação "antes de uma mudança de tier" e com o conceito de "Tier Cliff" da visão/estratégia (queda para um tier pior).
 - **Escrita atômica:** monta no tmp dir, calcula `content_hash` (grava metadata sem o campo → `snapshot_content_hash()` → reescreve), relê e valida, e só então `file.rename` para `<root>/<snapshot_id>/`. Falha → remove o tmp; nada parcial.
 - **Clock injetado:** `prepare_snapshot(clock = function() Sys.time())`; testes passam clock fixo → `generated_at` e `snapshot_id` determinísticos.
 - **`ffanalytics` em `Suggests` + `Remotes`, não `Imports`:** runtime e `devtools::test()` não podem depender dele (AD-2). O adapter faz `requireNamespace("ffanalytics", quietly = TRUE)`; na falta → `domain_error("ffanalytics_ausente", "Instale com renv::install('FantasyFootballAnalytics/ffanalytics@1955daa0…')")`.
