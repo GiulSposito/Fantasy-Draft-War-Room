@@ -1,0 +1,117 @@
+/*
+ * Fantasy Draft War Room — camada visual base (Story 1.6).
+ *
+ * Fonte ÚNICA dos valores: o frontmatter YAML de
+ *   _bmad-output/planning-artifacts/ux-designs/ux-Fantasy Draft War Room-2026-08-29/DESIGN.md
+ * Este arquivo reproduz aqueles tokens (colors, spacing, rounded, typography,
+ * focus-ring) 1:1 como CSS custom properties. O teste de completude
+ * (tests/testthat/test-ui_theme.R, caso "a") é o guarda: falha se algum token
+ * de DESIGN.md faltar ou divergir aqui.
+ *
+ * Servido em runtime por shiny::addResourcePath("fdwr-theme", "www"), registrado
+ * em R/ui_theme.R (o app.R compõe um objeto shinyApp e não monta ./www sozinho).
+ *
+ * Tema escuro único: sem alternância de tema, sem media-query de esquema de cor
+ * do sistema, sem paleta clara. O color-scheme dark é declaração de intenção
+ * fixa (chrome nativo escuro), não uma troca condicional.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* colors */
+  --color-canvas: #0B0F14;
+  --color-surface: #121922;
+  --color-surface-raised: #18222E;
+  --color-border: #293746;
+  --color-ink: #E7EDF3;
+  --color-ink-muted: #91A0AF;
+  --color-action: #57D68D;
+  --color-action-ink: #06120B;
+  --color-focus: #67B7FF;
+  --color-warning: #F2C14E;
+  --color-danger: #FF6B6B;
+
+  /* spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-gutter: 12px;
+
+  /* rounded */
+  --rounded-sm: 2px;
+  --rounded-md: 4px;
+  --rounded-full: 9999px;
+
+  /* typography — pilha monoespaçada do sistema, sem dependência de fonte web */
+  --type-display-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --type-display-size: 18px;
+  --type-display-weight: 700;
+  --type-display-line-height: 1.2;
+
+  --type-data-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --type-data-size: 14px;
+  --type-data-weight: 500;
+  --type-data-line-height: 1.3;
+
+  --type-label-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --type-label-size: 11px;
+  --type-label-weight: 700;
+  --type-label-line-height: 1.2;
+  --type-label-letter-spacing: 0.06em;
+
+  /* focus ring (DESIGN.md components.focus-ring) */
+  --focus-ring-width: 2px;
+  --focus-ring-color: var(--color-focus);
+}
+
+/* Reset mínimo de estética de terminal. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--color-canvas);
+}
+
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--type-data-family);
+  font-size: var(--type-data-size);
+  font-weight: var(--type-data-weight);
+  line-height: var(--type-data-line-height);
+}
+
+.t-display {
+  font-family: var(--type-display-family);
+  font-size: var(--type-display-size);
+  font-weight: var(--type-display-weight);
+  line-height: var(--type-display-line-height);
+}
+
+.t-data {
+  font-family: var(--type-data-family);
+  font-size: var(--type-data-size);
+  font-weight: var(--type-data-weight);
+  line-height: var(--type-data-line-height);
+}
+
+.t-label {
+  font-family: var(--type-label-family);
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
+  line-height: var(--type-label-line-height);
+  letter-spacing: var(--type-label-letter-spacing);
+  text-transform: uppercase;
+}
+
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 2px;
+}

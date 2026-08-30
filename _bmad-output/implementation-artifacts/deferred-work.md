@@ -53,3 +53,11 @@ Itens reais levantados durante o build, fora do escopo da story que os expôs. C
 - source_spec: `spec-1-5-validacao-qualidade-snapshot.md`
   summary: A lista coletar-tudo de `validate_snapshot_quality()` não inclui a completude do join (`player_id` em só um dos CSVs) nem a validação do *valor* de `schema_version`.
   evidence: O parser (`parse_snapshot_bundle`, fail-fast) cobre os dois (`snapshot_join_incompleto`, `snapshot_schema_incompativel`) e também é rodado pela superfície da Story 1.7. O I/O Matrix congelado da 1.5 não lista essas checagens. Se a superfície precisar delas na lista unificada de achados, adicionar em `domain_snapshot_quality.R` numa story futura.
+
+- source_spec: `spec-1-6-design-tokens-tema-escuro.md`
+  summary: `app.R` ainda envolve a UI em `shiny::fluidPage`, que carrega o CSS do Bootstrap; a robustez do `theme.css` em vencer essa cascata não é testada.
+  evidence: A "Ask First" da spec era "se Bootstrap for necessário, decidir com o usuário". O `fluidPage` vem da Story 1.1, não foi introduzido pela 1.6. A ordem de carregamento do `<head>` içado (`tags$head`) vs. as dependências do template não é garantida. A decisão real — trocar `fluidPage` por um container sem Bootstrap, ou manter o Bootstrap como reset e apoiar na especificidade do `theme.css` — pertence à Story 1.7, quando a primeira superfície tornar o conflito de cascata observável.
+
+- source_spec: `spec-1-6-design-tokens-tema-escuro.md`
+  summary: `fdwr_theme_head()` resolve `www/` relativo ao working directory do processo (a raiz do repo).
+  evidence: Assunção pré-existente do projeto inteiro — `app.R` faz `source("R/...")` relativo, o CLI usa `pkgload::load_all`, o script de regeneração roda da raiz. Se algum dia o app precisar rodar de outro cwd (empacotamento, instalação), `app.R` (sources), o CLI, e o resource-path de `fdwr_theme_head` precisam ser revisitados juntos — mover os assets para `inst/` e usar `system.file()`.

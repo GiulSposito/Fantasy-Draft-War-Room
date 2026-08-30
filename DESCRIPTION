@@ -24,6 +24,7 @@ Suggests:
     config,
     devtools,
     ffanalytics,
+    htmltools,
     lintr,
     pkgload,
     roxygen2,
