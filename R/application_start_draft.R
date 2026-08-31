@@ -89,10 +89,15 @@ start_draft_clock <- function(now) {
 #'   (devolvido como esta).
 #' @param team_entries Lista de mapas de times para [parse_league_teams()].
 #' @param first_round_order Vetor `character` com a ordem da 1a rodada.
-#' @param seed Seed do sorteio de ordem (inteiro finito) ou `NULL`. Validada
-#'   uma vez antes da transacao; o valor coagido alimenta o payload e a coluna.
+#' @param seed A seed **registrada** do sorteio de ordem (inteiro finito) ou
+#'   `NULL`. E so proveniencia -- "houve um sorteio com esta seed" --, nao uma
+#'   garantia de que `snake_draw_order()` reproduz `first_round_order` (a ordem
+#'   pode ter sido reordenada manualmente antes do inicio). Validada uma vez
+#'   antes da transacao; o valor coagido alimenta o payload e a coluna.
 #' @param clock Funcao sem argumentos que devolve o instante (`POSIXct` escalar).
-#' @param engine_version Versao do engine gravada na proveniencia.
+#' @param engine_version Versao do engine gravada na proveniencia. O default
+#'   resolve a versao do pacote instalado, caindo em `"desconhecida"` se o
+#'   pacote foi apenas `source()`-ado (nunca lanca).
 #' @return Um de tres formatos, e o caller deve checar `is_domain_error()`
 #'   **antes** de olhar `$ok`:
 #'   \itemize{
@@ -106,7 +111,10 @@ start_draft_clock <- function(now) {
 #' @export
 start_draft <- function(con, snapshot_metadata, league_config, team_entries,
                         first_round_order, seed = NULL, clock = Sys.time,
-                        engine_version = as.character(utils::packageVersion("fantasydraftwarroom"))) {
+                        engine_version = tryCatch(
+                          as.character(utils::packageVersion("fantasydraftwarroom")),
+                          error = function(e) "desconhecida"
+                        )) {
   if (is_domain_error(league_config)) {
     return(league_config)
   }

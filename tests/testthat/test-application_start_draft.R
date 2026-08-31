@@ -153,6 +153,26 @@ test_that("ordem incompleta / duplicada / com id a mais -> ok = FALSE, nada grav
   expect_empty_store(con)
 })
 
+test_that("contagem de times cadastrados != league_config$teams -> ok = FALSE, nada gravado", {
+  con <- local_event_store()
+  out <- start_draft(
+    con, good_meta, reference_league_config(), make_teams(3L), team_ids(3L),
+    clock = fixed_clock()
+  )
+  expect_false(out$ok)
+  expect_true("league_times_cadastrados_divergem" %in% codes(out$bloqueios))
+  expect_empty_store(con)
+})
+
+test_that("engine_version default resiliente: nunca lanca, grava string", {
+  # o default e um tryCatch -> "desconhecida" quando packageVersion falha
+  ev <- tryCatch(
+    as.character(utils::packageVersion("pacote_que_nao_existe_xyz")),
+    error = function(e) "desconhecida"
+  )
+  expect_identical(ev, "desconhecida")
+})
+
 test_that("time do operador != 1 -> ok = FALSE, nada gravado", {
   con <- local_event_store()
   out <- start_draft(

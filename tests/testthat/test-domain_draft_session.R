@@ -70,6 +70,19 @@ test_that("draft_start_findings: parse_league_teams falhou -> achado grupo 'time
   expect_identical(hit$details$grupo, "times")
 })
 
+test_that("draft_start_findings: contagem de times != league_config$teams -> achado", {
+  found <- draft_start_findings(
+    reference_league_config(), # espera 12 times
+    parse_league_teams(make_teams(3L)),
+    team_ids(3L)
+  )
+  hit <- Filter(function(f) f$code == "league_times_cadastrados_divergem", found)[[1L]]
+  expect_identical(hit$severity, "bloqueante")
+  expect_identical(hit$details$grupo, "times")
+  expect_identical(hit$details$cadastrados, 3L)
+  expect_identical(hit$details$esperado, 12L)
+})
+
 test_that("draft_error_finding: chave 'grupo' preexistente em details e sobrescrita", {
   err <- domain_error("qualquer", "msg", list(grupo = "antigo", extra = 1L))
   fnd <- draft_error_finding(err, "novo")

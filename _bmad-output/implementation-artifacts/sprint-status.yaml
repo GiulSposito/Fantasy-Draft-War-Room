@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-30-2026 12:00
-last_updated: 08-31-2026 23:55
+last_updated: 09-01-2026 00:20
 project: Fantasy Draft War Room
 project_key: NOKEY
 tracking_system: file-system
@@ -45,11 +45,11 @@ development_status:
   1-7-superfície-selecionar-e-validar-snapshot: done
   epic-1-retrospective: done
 
-  epic-2: in-progress
+  epic-2: done
   2-1-configuração-da-liga-e-envelope-v1: done
   2-2-calendário-snake-times-e-ordem: done
   2-3-event-store-sqlite-mínimo-e-start: done
-  2-4-use-case-start-draft-e-draft-started: review
+  2-4-use-case-start-draft-e-draft-started: done
   epic-2-retrospective: optional
 
   epic-3: backlog

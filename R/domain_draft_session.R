@@ -46,9 +46,10 @@ draft_error_finding <- function(err, grupo) {
 
 #' Achados bloqueantes das precondicoes do `start`
 #'
-#' Roda as tres validacoes que devem passar antes de qualquer `INSERT`:
+#' Roda as validacoes que devem passar antes de qualquer `INSERT`:
 #' [validate_league_envelope()] (config no envelope V1), a forma dos times
-#' (`teams_df` ja e um `domain_error` quando [parse_league_teams()] falhou) e
+#' (`teams_df` ja e um `domain_error` quando [parse_league_teams()] falhou), a
+#' coerencia entre a contagem de times cadastrados e `league_config$teams`, e
 #' [validate_first_round_order()] (ordem = permutacao exata dos ids). Cada
 #' violacao vira um achado bloqueante com `details$grupo` apontando o grupo
 #' afetado (`"times_rounds"` / `"slots_flex"` / `"scoring"` do envelope,
@@ -68,6 +69,21 @@ draft_start_findings <- function(league_config, teams_df, first_round_order) {
   if (is_domain_error(teams_df)) {
     findings <- c(findings, list(draft_error_finding(teams_df, "times")))
   } else {
+    cfg_teams <- if (is.list(league_config)) league_config$teams else NULL
+    if (length(cfg_teams) == 1L && is.numeric(cfg_teams) && is.finite(cfg_teams) &&
+          !identical(nrow(teams_df), as.integer(cfg_teams))) {
+      findings <- c(findings, list(snapshot_quality_finding(
+        "league_times_cadastrados_divergem", "bloqueante",
+        sprintf(
+          "Times cadastrados (%d) divergem de league_config$teams (%d).",
+          nrow(teams_df), as.integer(cfg_teams)
+        ),
+        list(
+          grupo = "times", cadastrados = nrow(teams_df),
+          esperado = as.integer(cfg_teams)
+        )
+      )))
+    }
     order_check <- validate_first_round_order(first_round_order, teams_df$fantasy_team_id)
     if (is_domain_error(order_check)) {
       findings <- c(findings, list(draft_error_finding(order_check, "ordem")))
@@ -89,8 +105,11 @@ draft_start_findings <- function(league_config, teams_df, first_round_order) {
 #'   do snapshot selecionado.
 #' @param league_config Objeto de [parse_league_config()] (valores resolvidos).
 #' @param engine_version Versao do engine no `start` (texto).
-#' @param seed Seed do sorteio de ordem (inteiro) ou `NULL` -- omitida do
-#'   payload quando `NULL`.
+#' @param seed A seed **registrada** do sorteio de ordem (inteiro) ou `NULL` --
+#'   proveniencia de "houve um sorteio com esta seed". NAO e garantia de que
+#'   `snake_draw_order(team_ids, seed)` reproduz a ordem congelada: a ordem pode
+#'   ter sido reordenada manualmente depois do sorteio. Omitida do payload
+#'   quando `NULL`.
 #' @return Lista nomeada `list(snapshot_id, snapshot_content_hash,
 #'   scoring_identity, league_rules_json, engine_version[, random_seed])`.
 #'   Mesma entrada -> `identical()`.
