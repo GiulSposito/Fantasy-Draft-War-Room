@@ -161,6 +161,9 @@ snake_draw_order <- function(team_ids, seed) {
   if (is_domain_error(team_ids)) {
     return(team_ids)
   }
+  if (is_domain_error(seed)) {
+    return(seed)
+  }
   if (!schedule_valid_ids(team_ids)) {
     return(domain_error(
       "snake_parametro_invalido",
@@ -176,6 +179,10 @@ snake_draw_order <- function(team_ids, seed) {
     ))
   }
 
+  # `set.seed(kind=, sample.kind=)` troca o RNGkind do PROCESSO -- salvar e
+  # restaurar junto com `.Random.seed`. Na restauracao o RNGkind vem primeiro
+  # (ele reinicializa `.Random.seed`), o assign/rm do seed vem depois.
+  old_kind <- RNGkind()
   seed_name <- ".Random.seed"
   had_seed <- exists(seed_name, envir = globalenv(), inherits = FALSE)
   old_seed <- if (had_seed) {
@@ -184,6 +191,7 @@ snake_draw_order <- function(team_ids, seed) {
     NULL
   }
   on.exit({
+    RNGkind(kind = old_kind[1L], normal.kind = old_kind[2L], sample.kind = old_kind[3L])
     if (had_seed) {
       assign(seed_name, old_seed, envir = globalenv())
     } else if (exists(seed_name, envir = globalenv(), inherits = FALSE)) {
@@ -260,6 +268,9 @@ snake_schedule <- function(first_round_order, user_team_id, rounds = 15L) {
   if (is_domain_error(first_round_order)) {
     return(first_round_order)
   }
+  if (is_domain_error(user_team_id)) {
+    return(user_team_id)
+  }
   if (!schedule_valid_ids(first_round_order)) {
     return(domain_error(
       "snake_parametro_invalido",
@@ -273,7 +284,7 @@ snake_schedule <- function(first_round_order, user_team_id, rounds = 15L) {
   }
   # Teto: `n * rounds` precisa caber em `integer` (senao `character(NA)` lanca).
   n_slots <- as.double(length(first_round_order)) * as.double(rounds_int)
-  if (rounds_int > 1000L || n_slots > .Machine$integer.max) {
+  if (n_slots > .Machine$integer.max) {
     return(domain_error(
       "snake_parametro_invalido",
       "Parametro 'rounds' invalido: o numero de slots excede o limite suportado.",
@@ -290,7 +301,9 @@ snake_schedule <- function(first_round_order, user_team_id, rounds = 15L) {
     ))
   }
 
-  first_round_order <- as.character(first_round_order)
+  # Trim uma vez (espelha `schedule_valid_ids`), pra `%in%` e a coluna baterem.
+  first_round_order <- trimws(as.character(first_round_order))
+  user_team_id <- trimws(as.character(user_team_id))
   if (!user_team_id %in% first_round_order) {
     return(domain_error(
       "snake_time_usuario_ausente",

@@ -115,9 +115,25 @@ test_that("snake_draw_order golden: RNG fixo, vetor permutado exato para seed 42
   )
 })
 
-test_that("domain_error em team_ids passa direto", {
+test_that("snake_draw_order restaura o RNGkind do processo", {
+  original <- RNGkind()
+  withr::defer(RNGkind(
+    kind = original[1L], normal.kind = original[2L], sample.kind = original[3L]
+  ))
+  suppressWarnings({
+    RNGkind(sample.kind = "Rounding")
+    if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
+      rm(".Random.seed", envir = globalenv())
+    }
+    snake_draw_order(c("a", "b", "c"), seed = 7)
+  })
+  expect_identical(RNGkind()[3L], "Rounding")
+})
+
+test_that("domain_error em team_ids ou seed passa direto", {
   err <- domain_error("upstream", "erro anterior")
   expect_identical(snake_draw_order(err, seed = 1), err)
+  expect_identical(snake_draw_order(c("a", "b"), seed = err), err)
 })
 
 test_that("seed invalida -> snake_seed_invalida com details$seed", {
@@ -251,9 +267,17 @@ test_that("rounds que estouraria o range de integer -> snake_parametro_invalido,
   expect_identical(e$details$campo, "rounds")
 })
 
-test_that("domain_error em first_round_order passa direto", {
+test_that("domain_error em first_round_order ou user_team_id passa direto", {
   err <- domain_error("upstream", "erro anterior")
   expect_identical(snake_schedule(err, "a"), err)
+  expect_identical(snake_schedule(c("a", "b"), err), err)
+})
+
+test_that("ids com espaco em volta: schedule aparado, is_user_team correto", {
+  df <- snake_schedule(c("a ", " b", "c"), user_team_id = "b", rounds = 2L)
+  expect_identical(unique(df$fantasy_team_id), c("a", "b", "c"))
+  expect_identical(df$fantasy_team_id[df$is_user_team], c("b", "b"))
+  expect_identical(sum(df$is_user_team), 2L)
 })
 
 # --- pureza / determinismo -----------------------------------------
