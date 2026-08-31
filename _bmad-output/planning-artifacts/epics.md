@@ -116,22 +116,23 @@ NFR25 (BENCHMARK): As metas são medidas com fixture determinística de 400 joga
 - O app é um pacote R local com Shiny na borda, domínio funcional puro, casos de uso e adaptadores de arquivos/SQLite; a UI só emite intenções (AD-1).
 - `scripts/prepare_snapshot.R` é o único componente que pode adquirir ou enriquecer dados e pode usar `ffanalytics`; o runtime aceita somente bundles locais validados e não usa rede (AD-2).
 - O bundle canônico contém `players.csv`, `metrics.csv`, `metadata.json` e `qa-report.json`, identificado por manifesto SHA-256 (bytes UTF-8/LF, paths relativos ordenados, SHA-256 por arquivo) e hash de scoring compatível; validação conclui antes da criação da sessão (AD-3).
-- O estado usa eventos imutáveis e projeção materializada SQLite atualizados na mesma transação; eventos carregam `{draft_id, event_sequence, event_type, expected_state_hash, expected_overall_pick, target_overall_pick, player_id, actor, created_at}` conforme aplicável, com hashes anterior/resultante (AD-4, AD-12).
-- Undo e correção são eventos reproduzidos por replay, preservam histórico e recusam qualquer estado inválido sem apagar picks posteriores (AD-5).
-- No `DRAFT_STARTED` a sessão congela `snapshot_id`/`snapshot_content_hash`, `scoring_config_hash`, `league_rules_hash`, `recommendation_policy_hash`, versões de schema, versão do engine e seed opcional; YAML é resolvido, coagido e canonicamente hasheado antes de uso; seleção de snapshot exige `scoring_config_hash` compatível (AD-6, AD-7).
-- SQLite é o único sistema local de registro: migrations versionadas, `event_sequence` monotônico, unicidade `(draft_id, overall_pick)` e `(draft_id, player_id)` na `effective_pick_projection`, um cursor de projeção por draft, WAL/foreign keys; exports são artefatos derivados (AD-8).
-- `recommend_fast()` é função de domínio pura, síncrona, em memória, determinística sobre estado congelado + métricas do snapshot + configuração + política; retorna candidatos ordenados, componentes, ≥3 fatores estruturados, reason codes, texto determinístico, avisos, hash de estado e versão do engine; sem scraping, scan SQL ou simulação no caminho crítico (AD-9).
-- O processo Shiny é iniciado por `Rscript -e "shiny::runApp(...)"`, faz bind em loopback, detecta colisão de porta e falha com mensagem acionável; storage/logs/exports ficam em diretório de dados do usuário fora do código-fonte, com permissões user-only; logs são estruturados e não expõem credenciais; startup checa migrations, storage gravável e validação do bundle antes de habilitar a sessão (AD-10).
-- Uma query lista sessões locais por `updated_at DESC` e pré-seleciona a mais nova, mas restauração exige confirmação/seleção explícita; `draft_id` selecionado é o único input de restauração; toda intenção mutante carrega `expected_state_hash` e (picks) `expected_overall_pick`, rejeitando intenções obsoletas com erro estruturado e instrução de reload (AD-11).
-- `draft_state_hash = SHA-256(canonical_json_v1(state_subset))` sobre `{draft_id, status, current_overall_pick, effective_picks ordenados por overall_pick, rosters ordenados por team_id/player_id, remaining_slots ordenados por team_id/slot, proveniência congelada}`; JSON canônico usa UTF-8/LF, chaves ordenadas, decimal fixo, `null` explícito, sem timestamps/latência/campos de UI; cada evento guarda `previous_state_hash` e `resulting_state_hash` e replay verifica ambos (AD-12).
+- O estado usa eventos imutáveis e projeção materializada SQLite atualizados na mesma transação; eventos carregam `{draft_id, event_sequence, event_type, expected_overall_pick, target_overall_pick, player_id, actor, created_at}` conforme aplicável (AD-4). _Simplificado pela Sprint Change Proposal 2026-08-31: sem `expected_state_hash` no payload, sem hashes de estado anterior/resultante por evento; AD-12 removido._
+- Undo e correção são eventos reproduzidos por replay, preservam histórico e recusam qualquer estado inválido sem apagar picks posteriores; o replay não verifica hash de estado (AD-5).
+- No `DRAFT_STARTED` a sessão congela `snapshot_id`/`snapshot_content_hash`, os **valores** de scoring/regras/política, versões de schema, versão do engine e seed opcional; a compatibilidade de scoring entre snapshot e configuração ativa é um aviso não-bloqueante (AD-6, AD-7). _Simplificado pela Sprint Change Proposal 2026-08-31: sem `scoring_config_hash`/`league_rules_hash`/`recommendation_policy_hash` canônicos._
+- SQLite é o único sistema local de registro: tabelas criadas no boot com `CREATE TABLE IF NOT EXISTS`, `event_sequence` monotônico, unicidade `(draft_id, overall_pick)` e `(draft_id, player_id)` na `effective_pick_projection`, WAL/foreign keys; exports são artefatos derivados (AD-8). _Simplificado pela Sprint Change Proposal 2026-08-31: sem runner de migrations versionadas nem histórico de migrations._
+- `recommend_fast()` é função de domínio pura, síncrona, em memória, determinística sobre estado congelado + métricas do snapshot + configuração + política; retorna candidatos ordenados, componentes, ≥3 fatores estruturados, reason codes, texto determinístico, avisos e versão do engine; sem scraping, scan SQL ou simulação no caminho crítico (AD-9). _Simplificado pela Sprint Change Proposal 2026-08-31: gate de benchmark p95 substituído por smoke checks._
+- O processo Shiny é iniciado por `Rscript -e "shiny::runApp(...)"`, faz bind em loopback, detecta colisão de porta e falha com mensagem acionável; storage/logs/exports ficam em diretório de dados do usuário fora do código-fonte, com permissões user-only; logs são estruturados e não expõem credenciais; startup checa storage gravável e validação do bundle antes de habilitar a sessão (AD-10).
+- Uma query lista sessões locais por `updated_at DESC` e pré-seleciona a mais nova, mas restauração exige confirmação/seleção explícita; `draft_id` selecionado é o único input de restauração; intenções de pick carregam `expected_overall_pick`, rejeitando intenções obsoletas com erro estruturado e instrução de reload (AD-11). _Simplificado pela Sprint Change Proposal 2026-08-31: sem `expected_state_hash`._
 - Convenções: nomes `snake_case`, funções de domínio são verbos, IDs de texto imutáveis, hashes SHA-256 hex minúsculo, timestamps UTC ISO-8601, `event_sequence` é a ordem autoritativa, event types UPPER_SNAKE_CASE, erros de domínio com `code` estável + mensagem PT-BR + detalhes machine-readable.
-- Estrutura semente do pacote: `DESCRIPTION`, `renv.lock`, `app.R` (composition root), `R/domain_*.R`, `R/application_*.R`, `R/adapter_sqlite_*.R`, `R/adapter_files_*.R`, `R/ui_*.R`, `scripts/prepare_snapshot.R`, `config/` (YAML versionado + schemas), `inst/schema/` (migrations SQLite + schema de snapshot), `tests/` (unit, integração, recovery, benchmark).
+- Estrutura semente do pacote: `DESCRIPTION`, `renv.lock`, `app.R` (composition root), `R/domain_*.R`, `R/application_*.R`, `R/adapter_sqlite_*.R`, `R/adapter_files_*.R`, `R/ui_*.R`, `scripts/prepare_snapshot.R`, `scripts/simulate_draft.R`, `config/` (YAML versionado + schemas), `inst/schema/` (schema SQLite + schema de snapshot), `tests/` (unit, integração, smoke).
 - Stack fixada: R 4.6.0, Shiny 1.14.0, DBI 1.3.0, RSQLite/SQLite 3.53.3, `renv` (lock), `ffanalytics` 3.x commit `1955daa05efb4a1f38c9a4dee609c5c4eaf84b4d` (somente pré-draft). Não há starter template obrigatório.
 - Contrato de dados: campos mínimos do snapshot por jogador (`player_id`, `display_name`, `normalized_name`, `position` normalizada QB/RB/WR/TE/K/DST, `points`, `vor`, `tier`, `tier_cliff` obrigatórios; `nfl_team` quando conhecido; `floor/ceiling/sd_points/ecr/adp/adp_sd/uncertainty/bye_week` opcionais com indisponibilidade visível e não-bloqueante); metadados obrigatórios `season/generated_at/pipeline_version/source_list/scoring_hash/content_hash/qa_summary`; importação CSV manual aceita apenas com campos obrigatórios + metadados; gates de qualidade bloqueiam por campo obrigatório ausente, `player_id` duplicado/nome ambíguo, posição fora do conjunto V1, ADP inválido, hash de scoring divergente ou qa-report ausente/bloqueante.
 
 ### UX Design Requirements
 
 Fonte: contrato de UX `DESIGN.md` (identidade visual + design tokens) e `EXPERIENCE.md` (arquitetura de informação, comportamento, estados, interação, acessibilidade, jornadas). Referência de composição: `mockups/live-war-room.html` — os spines vencem qualquer conflito com o mockup.
+
+> **Sprint Change Proposal 2026-08-31 (app local de uso único):** os UX-DR abaixo permanecem como intenção, com implementação reduzida a keyboard-first + ARIA básico. Cortados como entregável: UX-DR3 (auditoria de contraste WCAG), UX-DR21 (zoom 200% linear, `prefers-reduced-motion`), UX-DR22 (piso de alvo 24×24 px), e a parte screen-reader de UX-DR5/7/9/12/13/14/19/20 (`aria-controls`, `aria-activedescendant`, roving tabindex, `?` como referência de atalhos, ordem de `Tab` célula a célula). Layout: dois estados (amplo/estreito). Ver §4.4 da proposta e os callouts por epic.
 
 UX-DR1: Implementar o sistema de design tokens único (tema escuro, sem modo claro no V1) de `DESIGN.md` como fonte visual: `colors` (canvas, surface, surface-raised, border, ink, ink-muted, action, action-ink, focus, warning, danger), `typography` (display/data/label na pilha monoespaçada do sistema), `spacing`, `rounded` (sm 2px / md 4px / full 9999px) e os tokens por componente. Nenhuma cor ou métrica visual fora dos tokens.
 UX-DR2: Aplicar a semântica de cor de forma consistente: `action` (verde) só em pick vivo, confirmação e ação a executar; `focus` (azul) em foco de teclado e resultado selecionado; `warning` (âmbar) em undo e estado que pede conferência; `danger` (vermelho) só em falha, conflito ou ação inválida. Todo estado carrega texto, ícone ou rótulo além da cor.
@@ -166,63 +167,63 @@ FR2: Epic 1 — exibir e preservar temporada, geração, fontes, método, scorin
 FR3: Epic 1 — validar campos obrigatórios, duplicidades/ambiguidades, ADP inválido e cobertura anômala
 FR4: Epic 1 — exibir cobertura e avisos de qualidade antes de iniciar
 FR5: Epic 1 — impedir troca do snapshot após o início da sessão
-FR6: Epic 2 — configurar 8–14 times e exatamente 15 rounds dentro do envelope V1
-FR7: Epic 2 — validar 9 titulares e 6 reservas contra os 15 rounds
-FR8: Epic 2 — restringir o FLEX a RB ou WR
-FR9: Epic 2 — ler scoring YAML compatível com `ffanalytics`, Full PPR como padrão
-FR10: Epic 2 — exigir exatamente um time do usuário por sessão
-FR11: Epic 2 — bloquear o início quando rounds e slots forem inviáveis
-FR12: Epic 2 — cadastrar os times da liga
-FR13: Epic 2 — registrar ou sortear a ordem da primeira rodada
-FR14: Epic 2 — permitir reordenação manual antes do início
-FR15: Epic 2 — gerar todos os slots do snake automaticamente
-FR16: Epic 2 — exibir overall pick, round, pick da rodada, time e indicador do usuário
-FR17: Epic 2 — bloquear alterações normais da ordem após o início
-FR18: Epic 2 — iniciar somente uma sessão pronta (evento `start`/`DRAFT_STARTED`)
-FR19: Epic 3 — registrar o jogador disponível no slot atual
-FR20: Epic 3 — rejeitar jogador duplicado sem alterar o estado
-FR21: Epic 3 — associar o jogador automaticamente ao time do slot
-FR22: Epic 3 — avançar para o próximo slot após a confirmação
-FR23: Epic 4 — desfazer o último pick efetivo e restaurar o estado
-FR24: Epic 4 — corrigir pick anterior e recompor efeitos posteriores; rejeitar correção inválida
-FR25: Epic 4 — pausar e retomar a sessão
-FR26: Epic 4 — listar sessões locais, pré-selecionar a mais nova e restaurar só a confirmada
-FR27: Epic 5 — completar a sessão ao preencher o último slot
-FR28: Epic 5 — abortar administrativamente um draft incompleto com aviso persistente
-FR29: Epic 3 — buscar jogadores incrementalmente por nome
-FR30: Epic 3 — tolerar acentos, apóstrofos, hífens e variações simples na busca
-FR31: Epic 3 — mostrar posição e time NFL no resultado
-FR32: Epic 3 — confirmar a escolha por teclado
-FR33: Epic 3 — ocultar jogadores já escolhidos
-FR34: Epic 3 — mostrar retorno imediato após registrar um pick
-FR35: Epic 3 — manter a ação de undo visível
-FR36: Epic 3 — construir rosters de todos os times
-FR37: Epic 3 — determinar o melhor lineup titular respeitando a elegibilidade
-FR38: Epic 3 — tratar FLEX como slot de elegibilidade múltipla
-FR39: Epic 3 — calcular o ganho marginal de um candidato no roster do usuário
-FR40: Epic 3 — distinguir titular vazio, upgrade, FLEX, banco e redundância
-FR41: Epic 3 — alertar ou restringir escolhas que impossibilitem completar slots obrigatórios
-FR42: Epic 3 — recalcular o ranking após cada pick
-FR43: Epic 3 — mostrar ao menos cinco candidatos disponíveis
-FR44: Epic 3 — exibir score por candidato
-FR45: Epic 3 — exibir componentes principais do score
-FR46: Epic 3 — exibir explicação curta e determinística
-FR47: Epic 3 — exibir alerta de tier cliff quando aplicável
-FR48: Epic 3 — considerar o roster atual na recomendação
-FR49: Epic 3 — aplicar política configurável que desprioriza K/DST cedo e torná-la consultável
-FR50: Epic 3 — filtrar disponíveis e recomendações por posição sem alterar o estado
-FR51: Epic 2 — persistir cada comando relevante de forma atômica (event store)
-FR52: Epic 2 — registrar timestamp e ordenação de eventos
-FR53: Epic 4 — manter trilha de auditoria de undo e correções
-FR54: Epic 4 — reconstruir estado a partir dos eventos (replay)
-FR55: Epic 5 — exportar picks
-FR56: Epic 5 — exportar rosters
-FR57: Epic 5 — exportar configuração e metadados
-FR58: Epic 3 — configurar a blacklist de jogadores que os oculta das recomendações sem alterar o estado
-FR59: Epic 6 — estratégias de seleção como funções puras (ADP, Total Points, Random, Pure VOR, Pure VONA, app)
-FR60: Epic 6 — runner de simulação de draft snake offline com sorteio de ordem e estratégia por time
-FR61: Epic 6 — pontuação projetada por roster (titulares/banco/combinado) e ranking dos times
-FR62: Epic 6 — relatório determinístico da simulação, reproduzível pela seed, com repetição opcional
+FR6: Epic 2 (2.1) — configurar 8–14 times e exatamente 15 rounds dentro do envelope V1
+FR7: Epic 2 (2.1) — validar 9 titulares e 6 reservas contra os 15 rounds
+FR8: Epic 2 (2.1) — restringir o FLEX a RB ou WR
+FR9: Epic 2 (2.1) — ler scoring YAML compatível com `ffanalytics` apenas para identidade; Full PPR como padrão
+FR10: Epic 2 (2.2) — exigir exatamente um time do usuário por sessão
+FR11: Epic 2 (2.1) — bloquear o início quando rounds e slots forem inviáveis
+FR12: Epic 2 (2.2) — cadastrar os times da liga
+FR13: Epic 2 (2.2) — registrar ou sortear a ordem da primeira rodada
+FR14: Epic 2 (2.2) — permitir reordenação manual antes do início
+FR15: Epic 2 (2.2) — gerar todos os slots do snake automaticamente
+FR16: Epic 2 (2.2) — gerar overall pick, round, pick da rodada, time e indicador do usuário · UI em Epic 4 (4.1)
+FR17: Epic 2 (2.3) — bloquear alterações normais da ordem após o início
+FR18: Epic 2 (2.3) — iniciar somente uma sessão pronta (evento `DRAFT_STARTED`)
+FR19: Epic 3 (3.4) — registrar o jogador disponível no slot atual · UI em Epic 4 (4.2)
+FR20: Epic 3 (3.4) — rejeitar jogador duplicado sem alterar o estado
+FR21: Epic 3 (3.4) — associar o jogador automaticamente ao time do slot
+FR22: Epic 3 (3.4) — avançar para o próximo slot após a confirmação
+FR23: Epic 3 (3.4) — desfazer o último pick efetivo e restaurar o estado · controle Undo em Epic 4 (4.4)
+FR24: Epic 3 (3.4) — corrigir pick anterior e recompor efeitos posteriores; rejeitar correção inválida · UI em Epic 4 (4.4)
+FR25: Epic 4 (4.4) — sessão retomável do banco via flag de status; sem par de eventos pause/resume (downgrade — Sprint Change Proposal 2026-08-31)
+FR26: Epic 4 (4.4) — listar sessões locais, pré-selecionar a mais nova e restaurar só a confirmada
+FR27: Epic 5 (5.1) — completar a sessão ao preencher o último slot
+FR28: REMOVIDO — abort administrativo cortado (Sprint Change Proposal 2026-08-31); `complete` é a única transição terminal
+FR29: Epic 3 (3.3) — buscar jogadores incrementalmente por nome · UI em Epic 4 (4.2)
+FR30: Epic 3 (3.3) — tolerar acentos, apóstrofos, hífens e variações simples na busca
+FR31: Epic 3 (3.3) — mostrar posição e time NFL no resultado
+FR32: Epic 4 (4.2) — confirmar a escolha por teclado
+FR33: Epic 3 (3.3) — ocultar jogadores já escolhidos
+FR34: Epic 4 (4.3) — mostrar retorno imediato após registrar um pick
+FR35: Epic 4 (4.4) — manter a ação de undo visível
+FR36: Epic 3 (3.1) — construir rosters de todos os times
+FR37: Epic 3 (3.1) — determinar o melhor lineup titular respeitando a elegibilidade
+FR38: Epic 3 (3.1) — tratar FLEX como slot de elegibilidade múltipla
+FR39: Epic 3 (3.1) — calcular o ganho marginal de um candidato no roster do usuário
+FR40: Epic 3 (3.1) — distinguir titular vazio, upgrade, FLEX, banco e redundância
+FR41: Epic 3 (3.1) — alertar ou restringir escolhas que impossibilitem completar slots obrigatórios
+FR42: Epic 3 (3.2) — recalcular o ranking após cada pick
+FR43: Epic 3 (3.2) — mostrar ao menos cinco candidatos disponíveis
+FR44: Epic 3 (3.2) — exibir score por candidato
+FR45: Epic 3 (3.2) — exibir componentes principais do score
+FR46: Epic 3 (3.2) — exibir explicação curta e determinística
+FR47: Epic 3 (3.2) — exibir alerta de tier cliff quando aplicável
+FR48: Epic 3 (3.2) — considerar o roster atual na recomendação
+FR49: Epic 3 (3.2) — aplicar política configurável que desprioriza K/DST cedo e torná-la consultável
+FR50: Epic 3 (3.2) — filtrar disponíveis e recomendações por posição · badges de filtro em Epic 4 (4.2)
+FR51: Epic 2 (2.3) — persistir cada comando relevante de forma atômica (event store)
+FR52: Epic 2 (2.3) — registrar timestamp e ordenação de eventos
+FR53: Epic 3 (3.4) — manter trilha de auditoria de undo e correções · histórico de eventos em Epic 4 (4.4)
+FR54: Epic 3 (3.4) — reconstruir estado a partir dos eventos (replay, sem verificação de hash)
+FR55: Epic 5 (5.1) — exportar picks
+FR56: Epic 5 (5.1) — exportar rosters
+FR57: Epic 5 (5.1) — exportar configuração e metadados
+FR58: Epic 3 (3.2) — blacklist oculta jogadores das recomendações sem alterar o estado · editor em Epic 4 (4.3)
+FR59: Epic 3 (3.5) — estratégias de seleção como funções puras (ADP, Total Points, Random, Pure VOR, Pure VONA, app)
+FR60: Epic 3 (3.6) — runner de simulação de draft snake offline com sorteio de ordem e estratégia por time
+FR61: Epic 3 (3.6) — pontuação projetada por roster (titulares/banco/combinado) e ranking dos times
+FR62: Epic 3 (3.6) — relatório determinístico da simulação, reproduzível pela seed, com repetição opcional
 
 ## Epic List
 
@@ -230,25 +231,21 @@ FR62: Epic 6 — relatório determinístico da simulação, reproduzível pela s
 O operador prepara um snapshot canônico de projeções com `scripts/prepare_snapshot.R`, seleciona o bundle no app e vê temporada, fontes, scoring, cobertura e avisos de qualidade; dados inválidos bloqueiam o início com motivo acionável e uma ação de recuperação. Estabelece a fundação do pacote R (estrutura, `renv`, composition root, suíte de testes), o CLI de preparo com `ffanalytics`, o adapter de arquivos/bundle, o hashing canônico SHA-256 do manifesto, o schema de snapshot e a validação de qualidade como domínio puro, além dos design tokens base e da superfície "Qualidade do snapshot".
 **FRs covered:** FR1, FR2, FR3, FR4, FR5
 
-### Epic 2: Configurar a liga e travar o draft
-O operador configura times, rounds, slots, elegibilidade de FLEX e scoring, identifica seu time, cadastra os times, define/sorteia/reordena a primeira rodada, revisa o calendário snake completo e trava tudo com `Validate and Lock`, criando uma sessão pronta e imutável. Estabelece o domínio puro de liga/schedule/viabilidade, a configuração YAML canônica e seu hashing, o event store SQLite (migrations, projeções materializadas, WAL/foreign keys, `event_sequence` monotônico), a persistência atômica de eventos e o evento `DRAFT_STARTED` com proveniência congelada.
+### Epic 2: Liga, calendário e sessão mínima
+O operador configura a liga dentro do envelope V1, cadastra os times, define/sorteia/reordena a ordem da primeira rodada, revisa o calendário snake completo e trava tudo, criando uma sessão pronta. Estabelece o domínio puro de liga e schedule, o parser de configuração YAML com validação de envelope (sem serialização canônica nem hashing de config) e o event store SQLite mínimo (`CREATE TABLE IF NOT EXISTS` no boot, log append-only, `event_sequence` monotônico, projeção materializada) com o evento `DRAFT_STARTED` congelando os valores de proveniência.
 **FRs covered:** FR6, FR7, FR8, FR9, FR10, FR11, FR12, FR13, FR14, FR15, FR16, FR17, FR18, FR51, FR52
 
-### Epic 3: Conduzir o draft na Live War Room
-Na tela live o operador vê o estado global, busca um jogador por teclado, registra o pick com feedback imediato e vê board, roster, disponíveis e recomendações recomporem. A smart list mostra ao menos cinco candidatos com score, fatores, tier cliff, impacto no roster e política de K/DST, e o operador pode filtrar por posição e manter uma blacklist de jogadores fora das sugestões. Inclui o use case `record_pick`, o domínio de roster/melhor lineup/ganho marginal, `recommend_fast()` puro e explicável, a busca local incremental, as superfícies de faixa de estado, busca+autocomplete, lista inteligente, linha de candidato, inspeção, board, roster e feedback/erro, o modelo de teclado e foco e o gate de benchmark de latência.
-**FRs covered:** FR19, FR20, FR21, FR22, FR29, FR30, FR31, FR32, FR33, FR34, FR35, FR36, FR37, FR38, FR39, FR40, FR41, FR42, FR43, FR44, FR45, FR46, FR47, FR48, FR49, FR50, FR58
+### Epic 3: Domínio de draft, recomendação e simulação
+Fora de Shiny e SQLite, o domínio puro constrói rosters e o melhor lineup, calcula ganho marginal, produz recomendações rápidas e explicáveis (`recommend_fast()`), executa busca incremental de jogadores, aplica undo/correção/replay por eventos e roda uma simulação de draft snake completa comparando estratégias via `scripts/simulate_draft.R`. É o núcleo do produto: a ordem de execução (`3.1 → 3.2 → 3.3 → 3.5 → 3.6 → 3.4`) coloca o algoritmo e a simulação antes dos use cases de comando, permitindo calibrar a recomendação por script antes de qualquer tela.
+**FRs covered:** FR19, FR20, FR21, FR22, FR23, FR24, FR29, FR30, FR31, FR33, FR36, FR37, FR38, FR39, FR40, FR41, FR42, FR43, FR44, FR45, FR46, FR47, FR48, FR49, FR50, FR53, FR54, FR58, FR59, FR60, FR61, FR62
 
-### Epic 4: Corrigir, desfazer e recuperar a sessão
-O operador desfaz o último pick efetivo em múltiplos níveis, corrige um pick antigo com recomposição determinística que preserva os picks posteriores e rejeita qualquer estado inválido, pausa e retoma a sessão, e ao reabrir ou recarregar escolhe explicitamente qual sessão local restaurar sem perda de dados. Inclui os eventos `undo_last_pick`, `correct_pick`, `pause` e `resume`, o replay com verificação de hash anterior/resultante, a rejeição de intenções obsoletas, a query de sessões e as superfícies de undo, histórico de eventos, seleção de sessão e board em modo correção, além dos recovery drills.
-**FRs covered:** FR23, FR24, FR25, FR26, FR53, FR54
+### Epic 4: Live War Room
+Na tela live o operador vê o estado global, busca um jogador por teclado, registra o pick com feedback imediato e vê board, roster, disponíveis e recomendações recomporem; desfaz, corrige um pick pelo board, mantém uma blacklist e restaura sessões locais. Tema escuro único com os design tokens do Epic 1, fluxo keyboard-first com ARIA básico (roles/labels no combobox e uma região `aria-live`) e dois estados de layout (painéis laterais em tela ampla, empilhados em tela estreita).
+**FRs covered:** FR16, FR19, FR24, FR25, FR26, FR29, FR32, FR34, FR35, FR50, FR53, FR58
 
-### Epic 5: Encerrar o draft e exportar
-Ao preencher o último slot a sessão encerra normalmente; em caso excepcional o operador aborta administrativamente com aviso persistente; e em ambos os casos exporta picks, rosters, configuração e metadados com proveniência suficiente para auditoria. Inclui as transições `complete` e `abort`, os adapters de exportação derivada e a superfície de pausa/exportação com os estados "draft completo" e "ABORTED".
-**FRs covered:** FR27, FR28, FR55, FR56, FR57
-
-### Epic 6: Simulação e backtesting de estratégias (offline, via script)
-Fora do runtime live, o operador roda `scripts/simulate_draft.R` para testar a estratégia de recomendação do app contra baselines conhecidas (ADP, Total Points, Random, Pure VOR, Pure VONA) num draft snake completo simulado: sorteia a ordem dos times com seed registrada, atribui uma estratégia a cada time, executa todas as 15 rodadas e reporta a pontuação projetada de cada roster — só titulares, só banco e combinada — com o ranking dos times. O relatório é determinístico e reproduzível pela seed, com repetição opcional de N execuções. O epic reusa o domínio funcional puro e nunca toca o command handling nem o caminho crítico do live draft.
-**FRs covered:** FR59, FR60, FR61, FR62
+### Epic 5: Fechar e exportar
+Ao preencher o último slot a sessão encerra; o operador exporta picks, rosters, configuração e metadados do snapshot em CSV/JSON no diretório de dados do usuário. Não há abort administrativo — `complete` é a única transição terminal.
+**FRs covered:** FR27, FR55, FR56, FR57
 
 ---
 
@@ -431,11 +428,13 @@ So that eu só avance para a configuração da liga com dados válidos.
 
 ---
 
-## Epic 2: Configurar a liga e travar o draft
+## Epic 2: Liga, calendário e sessão mínima
 
-O operador configura a liga, cadastra times, define a ordem da primeira rodada, revisa o calendário snake e trava tudo com `Validate and Lock`, criando uma sessão pronta e imutável. Este epic estabelece o event store SQLite e a persistência atômica de eventos.
+O operador configura a liga dentro do envelope V1, cadastra os times, define a ordem da primeira rodada, revisa o calendário snake e trava tudo, criando uma sessão pronta. Este epic estabelece o domínio puro de liga/schedule e o event store SQLite mínimo.
 
-### Story 2.1: Schema e validação da configuração da liga
+> **Simplificações desta correção de curso (Sprint Change Proposal 2026-08-31):** sem runner de migrations versionadas nem histórico de migrations (`CREATE TABLE IF NOT EXISTS` no boot); sem serialização canônica nem `league_rules_hash`/`scoring_config_hash`/`recommendation_policy_hash`; o gate de compatibilidade de scoring é um aviso não-bloqueante; três superfícies de setup fundidas em uma.
+
+### Story 2.1: Configuração da liga e envelope V1
 
 As a operador,
 I want definir as regras da liga em configuração validada,
@@ -445,9 +444,9 @@ So that o draft só comece com um roster viável dentro do envelope V1.
 
 **Given** arquivos YAML versionados de regras de liga, tiers e política de recomendação
 **When** o parser de configuração os lê
-**Then** ele produz objetos de configuração canônicos, aceitando apenas valores escalares, listas e mapas declarados, e rejeitando lógica arbitrária
+**Then** ele produz objetos de configuração canônicos e a configuração de referência (12 times, Full PPR, 1 QB, 2 RB, 2 WR, 1 TE, 1 FLEX RB/WR, 1 K, 1 D/ST e 6 reservas) é o default fornecido
 
-**Given** uma configuração com 8–14 times, exatamente 15 rounds, 9 titulares (QB, WR, WR, RB, RB, FLEX, TE, K, D/ST) e 6 reservas que preenchem exatamente os 15 rounds
+**Given** uma configuração com 8–14 times, exatamente 15 rounds, 9 titulares (QB, WR, WR, RB, RB, FLEX, TE, K, D/ST) e 6 reservas que preenchem exatamente os 15 rounds, com FLEX aceitando somente RB ou WR
 **When** o validador roda
 **Then** a configuração é marcada como viável
 
@@ -455,137 +454,73 @@ So that o draft só comece com um roster viável dentro do envelope V1.
 **When** o validador roda
 **Then** a configuração é bloqueada com motivo acionável apontando o grupo afetado
 
-**Given** uma configuração canônica
-**When** ela é serializada
-**Then** a forma canônica (UTF-8/LF, chaves ordenadas, `null` explícito, numérico fixo) é o que é hasheado como `league_rules_hash`, `scoring_config_hash` e `recommendation_policy_hash`
-
-**Given** o YAML de scoring compatível com `ffanalytics` (Full PPR como default fornecido)
+**Given** o YAML de scoring compatível com `ffanalytics`
 **When** o runtime o lê
-**Then** ele o usa apenas para calcular o `scoring_config_hash` canônico e para exibir a identidade do scoring; o runtime não aplica regras de scoring nem re-pontua jogadores — projeções, VOR e tiers já vieram computados no snapshot do Epic 1
+**Then** ele o usa apenas para exibir a identidade do scoring; o runtime não aplica regras de scoring nem re-pontua jogadores — projeções, VOR e tiers já vieram computados no snapshot do Epic 1
 
-**Given** um snapshot cujo `scoring_hash` diverge do `scoring_config_hash` da configuração ativa
+**Given** um snapshot cujo `scoring_hash` diverge do scoring da configuração ativa
 **When** a compatibilidade é verificada
-**Then** o achado é bloqueante (o gate efetivo no `start` está na Story 2.6)
+**Then** o achado é um aviso não-bloqueante exibido antes do `start` (a decisão de prosseguir é do operador)
 
-### Story 2.2: Geração do calendário snake
+### Story 2.2: Calendário snake, times e ordem
 
 As a operador,
-I want ver todos os slots do draft antes de começar,
-So that eu confirme quem escolhe em cada pick.
+I want cadastrar os times, definir a ordem da primeira rodada e ver todos os slots do draft antes de começar,
+So that o calendário reflita a mesa real e eu confirme quem escolhe em cada pick.
 
 **Acceptance Criteria:**
 
 **Given** a contagem de times, 15 rounds e a ordem da primeira rodada
 **When** o gerador de schedule (função pura) roda
-**Then** ele produz todos os slots com overall pick contínuo, round, pick da rodada, time e indicador do time do usuário
-
-**Given** o padrão snake
-**When** o schedule é gerado
-**Then** a ordem de cada round par é o inverso da ordem do round ímpar anterior
-
-**Given** cada time
-**When** o schedule é gerado
-**Then** cada time possui exatamente um slot por round
+**Then** ele produz todos os slots com overall pick contínuo, round, pick da rodada, time e indicador do time do usuário, com a ordem de cada round par sendo o inverso do round ímpar anterior e exatamente um slot por time por round
 
 **Given** a mesma entrada
 **When** o gerador roda duas vezes
 **Then** o schedule é idêntico
 
-### Story 2.3: Event store SQLite e migrations
+**Given** a superfície de setup
+**When** eu cadastro os times da liga
+**Then** cada time recebe um identificador imutável e exatamente um time do operador é exigido por sessão
+
+**Given** os times cadastrados
+**When** eu escolho sortear a ordem
+**Then** o sorteio usa uma seed registrada e o resultado é reproduzível; eu também posso reordenar manualmente antes do início e a grade snake completa é atualizada
+
+**Given** uma superfície única agrupando times/rounds, slots/FLEX, scoring, time do operador e a grade de ordem
+**When** um grupo tem valor inválido
+**Then** a validade aparece junto ao grupo afetado e `Validate and Lock` permanece desabilitado até todos os grupos estarem viáveis
+
+### Story 2.3: Event store SQLite mínimo e `start`
 
 As a operador,
-I want que cada comando aceito seja durável,
-So that nenhum pick confirmado seja perdido após uma interrupção.
+I want que cada comando aceito seja durável e que travar a sessão congele a proveniência,
+So that nenhum pick confirmado se perca e nada mude por acidente durante o draft.
 
 **Acceptance Criteria:**
 
 **Given** um banco novo
 **When** o app inicia
-**Then** o runner de migrations aplica as migrations versionadas em ordem, grava o histórico de migrations e habilita WAL e foreign keys
+**Then** o boot cria as tabelas de sessões, eventos e `effective_pick_projection` com `CREATE TABLE IF NOT EXISTS` e habilita `PRAGMA journal_mode=WAL` e `foreign_keys=ON`
 
 **Given** o event log
 **When** eventos são anexados
-**Then** o log é append-only, `event_sequence` é monotônico por draft e a unicidade é imposta por transação
+**Then** o log é append-only e `event_sequence` é monotônico por draft
 
 **Given** a `effective_pick_projection`
 **When** ela é materializada
-**Then** o banco impõe `(draft_id, overall_pick)` único e `(draft_id, player_id)` único, e há um cursor de projeção/estado por draft
+**Then** o banco impõe `(draft_id, overall_pick)` único e `(draft_id, player_id)` único
 
 **Given** um comando aceito
 **When** ele é persistido
-**Then** o evento, as effective picks, o estado derivado, o cursor e os hashes são substituídos na mesma transação; uma falha não commita nada
-
-### Story 2.4: Superfície "Configuração da liga"
-
-As a operador,
-I want um formulário compacto para as regras da liga e o meu time,
-So that eu configure tudo sem editar código.
-
-**Acceptance Criteria:**
-
-**Given** a superfície de configuração
-**When** ela é renderizada
-**Then** os campos são agrupados de forma previsível: times/rounds, slots/FLEX, scoring e time do operador
-
-**Given** um grupo com valor inválido
-**When** eu altero esse grupo
-**Then** a validade aparece junto ao grupo afetado e o início permanece bloqueado
-
-**Given** a lista de times
-**When** eu identifico o time do operador
-**Then** exatamente um time do usuário é exigido por sessão
-
-**Given** todos os grupos viáveis
-**When** a superfície reavalia
-**Then** o avanço para a ordem snake é habilitado
-
-### Story 2.5: Superfície "Ordem snake"
-
-As a operador,
-I want cadastrar os times e definir a ordem da primeira rodada,
-So that o calendário do draft reflita a mesa real.
-
-**Acceptance Criteria:**
-
-**Given** a superfície de ordem
-**When** eu cadastro os times da liga
-**Then** cada time recebe um identificador imutável
-
-**Given** os times cadastrados
-**When** eu escolho sortear a ordem
-**Then** o sorteio usa uma seed registrada e o resultado é reproduzível
-
-**Given** uma ordem proposta
-**When** eu reordeno manualmente antes do início
-**Then** a grade snake completa é atualizada e mostra overall pick, round, pick da rodada, time e indicador do usuário
-
-**Given** a ordem em preparação
-**When** times ou configuração ainda são inválidos
-**Then** `Validate and Lock` permanece desabilitado e o foco vai para a primeira inconsistência
-
-### Story 2.6: `Validate and Lock` e evento `DRAFT_STARTED`
-
-As a operador,
-I want travar a configuração e a ordem numa sessão pronta,
-So that nada mude por acidente durante o draft.
-
-**Acceptance Criteria:**
+**Then** o evento, as effective picks e o estado derivado são substituídos na mesma transação; uma falha não commita nada
 
 **Given** configuração viável e ordem completa
 **When** eu aciono `Validate and Lock`
-**Then** o use case `start` valida tudo, anexa um evento `DRAFT_STARTED` e materializa o estado inicial na mesma transação
-
-**Given** o evento `DRAFT_STARTED`
-**When** ele é gravado
-**Then** ele congela `snapshot_id` e `snapshot_content_hash`, os hashes canônicos de scoring, regras e política, suas versões de schema, a versão do engine e a seed opcional
-
-**Given** a seleção de snapshot
-**When** `start` roda
-**Then** ele exige que o `scoring_config_hash` do snapshot bata com o da configuração ativa, bloqueando com motivo acionável se divergir
+**Then** o use case `start` anexa um evento `DRAFT_STARTED` que congela `snapshot_id`, `snapshot_content_hash` (do Epic 1), os valores de scoring/regras/política, a versão do engine e a seed opcional, e materializa o estado inicial na mesma transação
 
 **Given** uma sessão iniciada
 **When** tento trocar o snapshot ou reordenar por fluxo normal
-**Then** a ação é indisponível; só uma ação administrativa explícita pode alterá-la
+**Then** a ação é indisponível
 
 **Given** configuração fora do envelope ou ordem incompleta
 **When** eu aciono `Validate and Lock`
@@ -593,11 +528,79 @@ So that nada mude por acidente durante o draft.
 
 ---
 
-## Epic 3: Conduzir o draft na Live War Room
+## Epic 3: Domínio de draft, recomendação e simulação
 
-Na tela live o operador vê o estado global, busca um jogador por teclado, registra o pick com feedback imediato e vê board, roster, disponíveis e recomendações recomporem. Inclui o domínio de roster e o motor de recomendação puro, além de todas as superfícies da Live War Room.
+Fora de Shiny e SQLite, o domínio puro constrói rosters e o melhor lineup, calcula ganho marginal, produz recomendações rápidas e explicáveis, executa busca incremental, aplica undo/correção/replay por eventos e roda a simulação de draft snake. Este é o núcleo do produto.
 
-### Story 3.1: Busca local incremental de jogadores
+> **Ordem de execução:** `3.1 → 3.2 → 3.3 → 3.5 → 3.6 → 3.4`. O domínio puro e a simulação (`simulate_draft.R`) vêm antes dos use cases de comando, permitindo calibrar o algoritmo por script antes da UI.
+>
+> **Simplificações desta correção de curso (Sprint Change Proposal 2026-08-31):** replay sem verificação de `previous_state_hash`/`resulting_state_hash`; sem `expected_state_hash` nas intenções (só `expected_overall_pick` nos picks); sem contrato de canonical JSON de estado (AD-12 removido); gate de benchmark p95 substituído por smoke checks; recovery drill parametrizado substituído por um teste de reabertura do banco.
+
+### Story 3.1: Roster, melhor lineup e ganho marginal (puro)
+
+As a operador,
+I want ver o melhor lineup titular possível de um roster e quanto um candidato agrega ao meu,
+So that eu entenda o valor real das escolhas e decida com o impacto em vista.
+
+**Acceptance Criteria:**
+
+**Given** as picks efetivas de uma sessão
+**When** o domínio de roster (função pura) roda
+**Then** ele constrói o roster de todos os times a partir das picks efetivas
+
+**Given** um roster e a definição de slots da liga
+**When** o melhor lineup é calculado
+**Then** ele maximiza os pontos projetados dos titulares respeitando a elegibilidade de posição, tratando o FLEX como slot de elegibilidade múltipla (RB ou WR)
+
+**Given** um roster parcialmente preenchido
+**When** o lineup é calculado
+**Then** cada slot é classificado como titular vazio, upgrade, FLEX, banco ou redundância
+
+**Given** um candidato e o roster atual do operador
+**When** o ganho marginal (função pura) é calculado
+**Then** ele retorna a diferença entre o melhor lineup com e sem o candidato
+
+**Given** os rounds restantes e os slots obrigatórios ainda não preenchidos
+**When** uma escolha candidata tornaria impossível completar os slots obrigatórios
+**Then** o domínio sinaliza um alerta ou restrição com a condição específica
+
+**Given** a mesma entrada
+**When** o cálculo roda duas vezes
+**Then** o resultado é idêntico e determinístico
+
+### Story 3.2: Motor de recomendação `recommend_fast()` (puro)
+
+As a operador,
+I want uma lista curta de candidatos com o motivo objetivo de cada um,
+So that eu confie na recomendação sem tratá-la como certeza.
+
+**Acceptance Criteria:**
+
+**Given** o estado congelado do draft, as métricas do snapshot em memória, a configuração da liga e a política
+**When** `recommend_fast()` roda
+**Then** ela é pura e determinística e retorna candidatos ordenados com score, componentes do score, ao menos três fatores estruturados aplicáveis, reason codes, texto determinístico, avisos e versão do engine
+
+**Given** qualquer pick do operador
+**When** a lista é renderizada
+**Then** há ao menos cinco candidatos disponíveis, o score usa VOR/tier/ADP-como-preço, e os fatores distinguem projeção, valor, preço de mercado e urgência — nenhuma recomendação é um número opaco
+
+**Given** um candidato próximo de um limite de tier
+**When** a recomendação é calculada
+**Then** o alerta de tier cliff aparece quando aplicável
+
+**Given** a política que desprioriza K/DST cedo
+**When** a recomendação é calculada no início do draft
+**Then** K e DST são despriorizados no conjunto inicial e a política ativa é consultável
+
+**Given** um pick registrado, desfeito ou corrigido
+**When** o estado muda
+**Then** o ranking é recalculado, sem scraping, scan SQL ou simulação no caminho crítico
+
+**Given** [ABERTO — decidir ao entrar no Epic 3] a inclusão de um fator de urgência no V1
+**When** a decisão for incluir
+**Then** o fator de urgência é o cálculo determinístico de valor sobre o próximo disponível (distância até o próximo pick do operador no calendário snake + ADP), reusado da estratégia Pure VONA, sem modelo de mercado probabilístico
+
+### Story 3.3: Busca incremental de jogadores (puro)
 
 As a operador,
 I want encontrar um jogador disponível digitando parte do nome,
@@ -617,749 +620,11 @@ So that eu registre o pick sem tirar os olhos do draft.
 **When** a busca roda
 **Then** ele não aparece nos resultados
 
-**Given** o benchmark determinístico
-**When** 100 buscas são executadas
-**Then** o p95 da busca é ≤ 100 ms e nenhuma consulta acessa a rede
-
 **Given** uma busca sem correspondência
 **When** a query roda
 **Then** ela retorna vazio e o estado do draft permanece intacto
 
-### Story 3.2: Use case `record_pick`
-
-As a operador,
-I want confirmar um jogador no pick atual,
-So that o board avance e o roster do time correto seja atualizado.
-
-**Acceptance Criteria:**
-
-**Given** um jogador disponível e o pick atual
-**When** o use case `record_pick` roda com `expected_state_hash` e `expected_overall_pick` corretos
-**Then** ele anexa exatamente um evento `RECORD_PICK` ordenado, associa o jogador ao time do slot, avança o pick atual e substitui o read model na mesma transação
-
-**Given** um jogador já registrado como pick efetivo
-**When** `record_pick` roda
-**Then** o comando é rejeitado, nenhum evento é anexado e o estado não muda
-
-**Given** `expected_state_hash` ou `expected_overall_pick` obsoletos
-**When** `record_pick` roda
-**Then** o comando é rejeitado com erro estruturado e instrução de recarga, sem commitar nada
-
-**Given** o benchmark determinístico
-**When** 168 picks são registrados
-**Then** o p95 de persistência do pick é ≤ 100 ms
-
-**Given** uma interrupção do processo imediatamente após o commit de um pick
-**When** o app reinicia e a sessão é restaurada
-**Then** o pick confirmado está presente
-
-### Story 3.3: Construção de rosters e melhor lineup
-
-As a operador,
-I want ver o melhor lineup titular possível de um roster,
-So that eu entenda o valor real das escolhas de cada time.
-
-**Acceptance Criteria:**
-
-**Given** as picks efetivas de uma sessão
-**When** o domínio de roster (função pura) roda
-**Then** ele constrói o roster de todos os times a partir das picks efetivas
-
-**Given** um roster e a definição de slots da liga
-**When** o melhor lineup é calculado
-**Then** ele maximiza os pontos projetados dos titulares respeitando a elegibilidade de posição, tratando o FLEX como slot de elegibilidade múltipla (RB ou WR)
-
-**Given** um roster parcialmente preenchido
-**When** o lineup é calculado
-**Then** cada slot é classificado como titular vazio, upgrade, FLEX, banco ou redundância
-
-**Given** a mesma entrada
-**When** o cálculo roda duas vezes
-**Then** o resultado é idêntico e determinístico
-
-### Story 3.4: Ganho marginal e viabilidade de slots obrigatórios
-
-As a operador,
-I want saber quanto um candidato agrega ao meu roster e se uma escolha me impede de completar slots,
-So that eu decida com o impacto real em vista.
-
-**Acceptance Criteria:**
-
-**Given** um candidato e o roster atual do operador
-**When** o ganho marginal (função pura) é calculado
-**Then** ele retorna a diferença entre o melhor lineup com e sem o candidato
-
-**Given** os rounds restantes e os slots obrigatórios ainda não preenchidos
-**When** uma escolha candidata tornaria impossível completar os slots obrigatórios
-**Then** o domínio sinaliza um alerta ou restrição com a condição específica
-
-**Given** uma escolha que preserva a viabilidade
-**When** a verificação roda
-**Then** nenhum alerta de inviabilidade é emitido
-
-### Story 3.5: Motor de recomendação `recommend_fast()`
-
-As a operador,
-I want uma lista curta de candidatos com o motivo objetivo de cada um,
-So that eu confie na recomendação sem tratá-la como certeza.
-
-**Acceptance Criteria:**
-
-**Given** o estado congelado do draft, as métricas do snapshot em memória, a configuração da liga e a política
-**When** `recommend_fast()` roda
-**Then** ela é pura e determinística e retorna candidatos ordenados com score, componentes do score, ao menos três fatores estruturados aplicáveis, reason codes, texto determinístico, avisos, hash de estado e versão do engine
-
-**Given** qualquer pick do operador
-**When** a lista é renderizada
-**Then** há ao menos cinco candidatos disponíveis
-
-**Given** um candidato próximo de um limite de tier
-**When** a recomendação é calculada
-**Then** o alerta de tier cliff aparece quando aplicável
-
-**Given** a política que desprioriza K/DST cedo
-**When** a recomendação é calculada no início do draft
-**Then** K e DST são despriorizados no conjunto inicial e a política ativa é consultável
-
-**Given** um pick registrado, desfeito ou corrigido
-**When** o estado muda
-**Then** o ranking é recalculado
-
-**Given** o benchmark determinístico
-**When** a recomendação é calculada
-**Then** o p95 é ≤ 300 ms e nenhum scraping, scan SQL ou simulação está no caminho crítico
-
-**Given** os fatores exibidos
-**When** o operador os lê
-**Then** eles distinguem projeção, valor, preço de mercado e urgência, e nenhuma recomendação é um número opaco
-
-### Story 3.6: Faixa de estado
-
-As a operador,
-I want o pick atual e o meu próximo pick sempre visíveis no topo,
-So that eu saiba onde estamos sem procurar num dashboard.
-
-**Acceptance Criteria:**
-
-**Given** a Live War Room
-**When** ela é renderizada
-**Then** a faixa de estado fixa mostra o overall pick em `typography.display`, a rodada e o pick da rodada, o time no relógio, o último jogador registrado e o próximo pick do operador
-
-**Given** um comando aceito
-**When** o estado muda
-**Then** a faixa atualiza como uma unidade
-
-**Given** o pick vivo
-**When** a faixa é exibida
-**Then** ele usa `action` e os estados pausado, alerta e concluído usam texto e ícone além de cor
-
-**Given** qualquer largura de janela suportada
-**When** a Live War Room é exibida
-**Then** a faixa de estado nunca sai da vista
-
-### Story 3.7: Campo de busca e autocomplete
-
-As a operador,
-I want um campo de busca dominante com o resultado que `Enter` registrará claramente marcado,
-So that eu confirme o jogador certo sem ambiguidade.
-
-**Acceptance Criteria:**
-
-**Given** a Live War Room
-**When** ela é renderizada
-**Then** o campo de busca tem largura dominante e os resultados aparecem imediatamente abaixo, cada linha com nome, posição e time NFL
-
-**Given** resultados exibidos
-**When** um resultado está ativo
-**Then** ele usa `candidate-active` e contorno de foco, e é o alvo de `Enter`
-
-**Given** o autocomplete
-**When** um leitor de tela o inspeciona
-**Then** ele é um combobox/listbox com label persistente, `aria-expanded`, `aria-controls` e `aria-activedescendant`, e anuncia contagem, ausência de resultados e item ativo
-
-**Given** um pick registrado
-**When** o feedback aparece
-**Then** o retorno é imediato e o foco volta para a busca para o próximo pick
-
-### Story 3.8: Lista inteligente, linha de candidato e filtro de posição
-
-As a operador,
-I want uma tabela curta de candidatos recomendados navegável por teclado,
-So that eu compare e registre rapidamente.
-
-**Acceptance Criteria:**
-
-**Given** a recomendação ativa
-**When** a lista inteligente é renderizada
-**Then** ela mostra ao menos cinco candidatos disponíveis ordenados pela recomendação, cada linha distinguindo score, fatores, alerta de tier cliff e impacto no roster
-
-**Given** a recomendação nº 1
-**When** a lista é exibida
-**Then** ela é destacada por ordem e peso tipográfico, não por um card grande
-
-**Given** os badges de filtro de posição
-**When** eu ativo um filtro
-**Then** a lista de disponíveis e de recomendações é filtrada sem alterar o estado do draft
-
-**Given** o foco fora de uma entrada editável
-**When** uso as setas
-**Then** o destaque move entre candidatos; `Espaço` abre a inspeção e `Enter` tenta registrar no pick atual
-
-**Given** o clique
-**When** eu clico numa linha
-**Then** ele é uma alternativa suportada, não o fluxo principal, e não remove a equivalência por teclado
-
-### Story 3.9: Painel de inspeção do jogador
-
-As a operador,
-I want conferir os fatores e o impacto de um candidato antes de agir,
-So that eu escolha conscientemente entre valor, preço e urgência.
-
-**Acceptance Criteria:**
-
-**Given** um candidato focado
-**When** pressiono `Espaço`
-**Then** o painel de inspeção abre numa superfície `surface-raised` sem cobrir a faixa de estado ou a busca
-
-**Given** o painel aberto
-**When** ele é renderizado
-**Then** mostra a explicação determinística com projeção, valor, preço de mercado e urgência quando aplicáveis, além de tier e impacto marginal no roster
-
-**Given** um campo opcional ausente no snapshot
-**When** o painel o exibiria
-**Then** ele mostra `Não disponível neste snapshot` sem ocultar candidatos nem bloquear o registro
-
-**Given** o painel aberto
-**When** pressiono `Esc`
-**Then** ele fecha e o foco retorna à lista
-
-### Story 3.10: Board de draft
-
-As a operador,
-I want uma grade compacta de todos os picks com o pick atual marcado,
-So that eu confira o board contra a ESPN de relance.
-
-**Acceptance Criteria:**
-
-**Given** a sessão ativa
-**When** o board é renderizado
-**Then** ele é uma grade compacta por round e time com a linha ou coluna do pick atual claramente marcada
-
-**Given** um pick recém-registrado
-**When** o board atualiza
-**Then** a célula recebe um realce transitório em `action` sem animação prolongada
-
-**Given** os picks do operador
-**When** o board é exibido
-**Then** eles são distinguíveis também por rótulo, não apenas por cor
-
-**Given** o board com foco
-**When** uso as setas
-**Then** o roving tabindex percorre as células e cada célula anuncia overall, time, jogador e estado
-
-**Given** uma célula de pick corrigível
-**When** pressiono `Enter` ou `Espaço`
-**Then** o modo de correção abre sem esconder os picks posteriores (fluxo completo no Epic 4)
-
-### Story 3.11: Painel de roster do operador
-
-As a operador,
-I want ver meu roster, melhor lineup e slots vazios,
-So that eu saiba minha necessidade real a cada pick.
-
-**Acceptance Criteria:**
-
-**Given** o roster do operador
-**When** o painel é renderizado
-**Then** ele agrupa titulares, FLEX e banco em grupos visuais estáveis, com nomes em uma linha e posição/time NFL em `typography.label` ou `ink-muted`
-
-**Given** o roster atual
-**When** o painel é exibido
-**Then** ele torna visíveis o melhor lineup e os slots vazios
-
-**Given** um candidato focado na busca ou na lista
-**When** o painel é exibido
-**Then** o impacto marginal desse candidato no roster aparece
-
-### Story 3.12: Feedback de confirmação e tratamento de erros
-
-As a operador,
-I want confirmação breve dos picks e erros que não somem antes de eu agir,
-So that eu opere rápido sem perder informação.
-
-**Acceptance Criteria:**
-
-**Given** um pick confirmado
-**When** o feedback aparece
-**Then** ele é breve, textual, próximo à faixa de estado, substitui a lista em menos de um ciclo de atenção e devolve o fluxo à busca
-
-**Given** uma única região `aria-live=polite` `aria-atomic=true`
-**When** um comando é aceito
-**Then** ela anuncia em frase curta o jogador, o novo overall e o undo disponível
-
-**Given** um jogador já escolhido, nome ambíguo ou inválido
-**When** tento registrar
-**Then** nada é persistido, a mensagem identifica o motivo (e o pick efetivo quando existir) e o foco volta à busca/lista
-
-**Given** um erro ou bloqueio
-**When** ele é exibido
-**Then** ele persiste até o operador poder agir e não rouba o foco
-
-**Given** qualquer toast
-**When** ele aparece
-**Then** ele não encobre a busca, o pick atual nem o foco de teclado, e não há modal de confirmação rotineiro
-
-**Given** qualquer microcopy de confirmação, erro ou estado em toda a Live War Room
-**When** ela é redigida
-**Then** ela é curta, factual e orientada à próxima ação (ex.: `Registrado: Ja'Marr Chase`, `Já escolhido no pick 42. Busque outro jogador.`), sem celebração, alarmismo ou confiança preditiva, e mensagens de domínio ficam em PT-BR
-
-### Story 3.13: Modelo de interação por teclado e gestão de foco
-
-As a operador,
-I want um fluxo keyboard-first previsível,
-So that eu conduza o draft sem usar o mouse.
-
-**Acceptance Criteria:**
-
-**Given** o foco dentro de uma entrada editável
-**When** pressiono setas, `Enter`, `Esc` ou `Espaço`
-**Then** essas teclas pertencem ao autocomplete e atalhos globais não disparam
-
-**Given** o foco fora de entrada editável
-**When** pressiono setas, `Enter`, `Espaço`, `Esc` ou `U`
-**Then** setas movem o destaque, `Enter` registra, `Espaço` alterna a inspeção, `Esc` fecha só a camada contextual superior e `U` aplica um undo por tecla, repetível
-
-**Given** qualquer painel da Live War Room
-**When** pressiono `/` ou `?`
-**Then** `/` foca a busca e `?` abre a referência de atalhos
-
-**Given** cada atalho
-**When** eu navego só por controles acessíveis
-**Then** há um controle equivalente com label e dica de teclado, e `Tab` alcança todos os controles na ordem estado, busca, candidatos, inspeção, board, roster, controles
-
-**Given** um registro, undo ou correção
-**When** a ação conclui
-**Then** o foco retorna à busca/lista e permanece visível por 2px em `focus`
-
-### Story 3.14: Blacklist de jogadores
-
-As a operador,
-I want manter uma lista de jogadores que não devem ser sugeridos,
-So that machucados e suspensos não poluam minhas recomendações.
-
-**Acceptance Criteria:**
-
-**Given** o editor de blacklist na Live War Room
-**When** adiciono ou removo um jogador por busca
-**Then** a mudança tem efeito imediato e é anunciada sem roubar o foco
-
-**Given** um jogador na blacklist
-**When** a lista inteligente e as recomendações são renderizadas
-**Then** ele é omitido de ambas
-
-**Given** um jogador na blacklist
-**When** eu o busco pelo nome
-**Then** ele ainda aparece nos resultados de busca com marcação explícita (texto e ícone, nunca só cor) e continua draftável
-
-**Given** a blacklist da sessão
-**When** o app é recarregado
-**Then** ela sobrevive ao refresh, sem entrar no `draft_state_hash` nem gerar evento de draft
-
-### Story 3.15: Gate de benchmark de latência
-
-As a mantenedor,
-I want um benchmark determinístico do caminho crítico,
-So that as metas de performance sejam verificáveis a cada release.
-
-**Acceptance Criteria:**
-
-**Given** a fixture determinística de 400 jogadores, 12 times e 168 picks
-**When** o benchmark roda 168 picks e 100 buscas
-**Then** ele mede o p95 de PERF-001 a PERF-005 e registra a configuração efetiva e a ferramenta de medição
-
-**Given** os resultados do benchmark
-**When** ele conclui
-**Then** persistência/busca de pick ≤ 100 ms, recomendação ≤ 300 ms, atualização de tela ≤ 500 ms e inicialização ≤ 3 s no p95
-
-**Given** o fluxo live inteiro sob benchmark
-**When** ele roda
-**Then** nenhuma operação síncrona acessa a rede
-
-### Story 3.16: Layout responsivo split-window e piso de acessibilidade
-
-As a operador,
-I want a Live War Room utilizável numa janela estreita ao lado da ESPN,
-So that eu compare e aja sem alternar janelas.
-
-**Acceptance Criteria:**
-
-**Given** largura de desktop ampla
-**When** a Live War Room é exibida
-**Then** board e roster são painéis laterais
-
-**Given** largura de janela reduzida
-**When** a Live War Room é exibida
-**Then** board, roster e auditoria viram painéis alternáveis preservando estado e foco, enquanto faixa de estado, busca e lista de candidatos permanecem visíveis
-
-**Given** zoom de 200%
-**When** a tela é exibida
-**Then** estado, busca e lista seguem leitura linear e só o grid do board rola horizontalmente, mantendo o pick atual identificável
-
-**Given** preferência de movimento reduzido
-**When** a interface anima
-**Then** transições não essenciais são eliminadas sem atrasar o feedback
-
-**Given** qualquer controle clicável
-**When** ele é medido
-**Then** o alvo é ao menos 24×24 CSS px ou tem espaçamento equivalente, e a tela rola para manter o foco visível, inclusive abaixo da faixa fixa
-
----
-
-## Epic 4: Corrigir, desfazer e recuperar a sessão
-
-O operador desfaz picks, corrige um pick antigo com recomposição determinística, pausa/retoma e restaura explicitamente uma sessão local após refresh, sem perda de dados. Inclui o replay de eventos com verificação de hash e os recovery drills.
-
-### Story 4.1: Replay de eventos e verificação de hash
-
-As a mantenedor,
-I want reconstruir o estado a partir dos eventos ordenados,
-So that undo, correção e restauração compartilhem um contrato único de estado.
-
-**Acceptance Criteria:**
-
-**Given** o log de eventos ordenado por `event_sequence`
-**When** o replay roda
-**Then** ele reconstrói o estado aplicando cada evento em ordem e produz o mesmo `draft_state_hash` para a mesma sequência
-
-**Given** cada evento com `previous_state_hash` e `resulting_state_hash`
-**When** o replay materializa
-**Then** ele verifica ambos os hashes antes de gravar o read model e aborta sem materializar se qualquer um divergir
-
-**Given** o subconjunto canônico de estado (`draft_id`, `status`, `current_overall_pick`, picks efetivas ordenadas, rosters ordenados, slots restantes ordenados, proveniência congelada)
-**When** o hash é calculado
-**Then** ele usa JSON canônico UTF-8/LF, chaves ordenadas, decimal fixo e `null` explícito, e exclui timestamps, latência e campos só de UI
-
-### Story 4.2: Use case `undo_last_pick`
-
-As a operador,
-I want desfazer o último pick efetivo, quantas vezes for preciso,
-So that eu corrija uma sequência anotada errada sem perder o ritmo.
-
-**Acceptance Criteria:**
-
-**Given** ao menos um pick efetivo
-**When** aplico `undo_last_pick`
-**Then** um evento `UNDO` é anexado e o replay passa a remover o pick efetivo mais recente
-
-**Given** um undo aplicado
-**When** o estado recompõe
-**Then** board, disponíveis, rosters e recomendações voltam a refletir aquele pick aberto
-
-**Given** múltiplos undos consecutivos
-**When** eu os aplico
-**Then** cada `U` desfaz o próximo pick efetivo enquanto houver, e a auditoria mantém todos os eventos de undo
-
-**Given** nenhum pick efetivo para desfazer
-**When** aplico `undo_last_pick`
-**Then** o draft não muda e a interface anuncia que não há undo disponível
-
-### Story 4.3: Use case `correct_pick`
-
-As a operador,
-I want corrigir um pick antigo sem apagar os posteriores,
-So that o board volte a coincidir com a ESPN preservando a trilha.
-
-**Acceptance Criteria:**
-
-**Given** um pick alvo no board e um jogador ainda disponível
-**When** aplico `correct_pick` nomeando o `overall_pick` alvo e o `player_id` substituto
-**Then** um evento `CORRECTION` é anexado e o replay aplica a correção na sequência
-
-**Given** uma correção que resultaria em jogador duplicado, violação de slot ou invalidação de qualquer pick efetivo posterior
-**When** aplico `correct_pick`
-**Then** a correção é rejeitada, nenhum evento é anexado e a interface explica qual condição falhou
-
-**Given** uma correção válida
-**When** ela é aplicada
-**Then** todos os picks posteriores são preservados e a Live War Room mostra o estado recomposto
-
-**Given** a auditoria
-**When** a correção conclui
-**Then** o evento de correção fica registrado com alvo e resultado efetivo
-
-### Story 4.4: Use cases `pause` e `resume`
-
-As a operador,
-I want pausar e retomar a sessão,
-So that eu interrompa o draft sem risco de registro acidental.
-
-**Acceptance Criteria:**
-
-**Given** uma sessão ativa
-**When** aplico `pause`
-**Then** um evento `PAUSE` é anexado e novos picks normais são bloqueados
-
-**Given** uma sessão pausada
-**When** aplico `resume`
-**Then** um evento `RESUME` é anexado e a mesma sessão reabre no estado consistente
-
-**Given** uma sessão pausada
-**When** a Live War Room é exibida
-**Then** o estado pausado é explícito por texto e ícone e oferece retomar
-
-### Story 4.5: Rejeição de intenção obsoleta
-
-As a operador,
-I want que uma ação sobre um estado que já mudou seja recusada,
-So that eu nunca registre um pick baseado numa tela desatualizada.
-
-**Acceptance Criteria:**
-
-**Given** toda intenção mutante da UI
-**When** ela é emitida
-**Then** ela carrega `expected_state_hash` e, para picks, `expected_overall_pick`
-
-**Given** uma intenção cujo hash ou overall pick esperado não bate com o estado atual
-**When** o use case a processa
-**Then** ela é rejeitada com erro estruturado e instrução de recarga, sem alterar o estado
-
-**Given** a intenção rejeitada
-**When** a UI a recebe
-**Then** ela recarrega o estado e informa que o pick já havia mudado antes da ação
-
-### Story 4.6: Query de sessões e restauração explícita
-
-As a operador,
-I want escolher qual sessão local restaurar ao abrir o app,
-So that eu retome exatamente o draft certo sem perda.
-
-**Acceptance Criteria:**
-
-**Given** sessões locais existentes
-**When** abro ou recarrego o app
-**Then** uma query lista as sessões por `updated_at DESC` e pré-seleciona a mais nova
-
-**Given** a lista de sessões
-**When** nenhuma ação é tomada
-**Then** nenhuma restauração ocorre; a restauração só acontece após confirmação ou seleção explícita, usando o `draft_id` selecionado como único input
-
-**Given** uma sessão com 80 picks confirmados
-**When** eu a restauro
-**Then** o estado volta consistente, sem perda nem duplicação de picks
-
-**Given** armazenamento ou restauração local indisponível
-**When** tento restaurar
-**Then** a sessão não é tratada como restaurada; a interface explica a falha e não inventa um estado novo
-
-### Story 4.7: Controle Undo
-
-As a operador,
-I want o undo sempre visível com o próximo pick a desfazer,
-So that o undo multinível seja óbvio e não pareça destrutivo.
-
-**Acceptance Criteria:**
-
-**Given** a Live War Room
-**When** ela é exibida
-**Then** o controle Undo está sempre visível, acionável por `U`, com borda e texto em `warning`
-
-**Given** picks efetivos para reverter
-**When** o controle é exibido
-**Then** ele mostra de forma compacta o próximo pick a desfazer (overall, jogador, time) e o contador de reversões consecutivas ainda disponíveis
-
-**Given** o controle Undo
-**When** o operador o lê
-**Then** ele não é apresentado como ação destrutiva e o atalho `U` é anunciado
-
-### Story 4.8: Histórico de eventos e board em modo correção
-
-As a operador,
-I want conferir registros, undos e correções em ordem e iniciar uma correção pelo board,
-So that eu audite o que mudou e conserte um pick antigo no lugar.
-
-**Acceptance Criteria:**
-
-**Given** a sessão
-**When** o histórico de eventos é renderizado
-**Then** ele lista registros, undos e correções em ordem, em `ink-muted`, cada um com alvo e resultado efetivo, sem competir com o board atual
-
-**Given** uma célula de pick corrigível no board
-**When** pressiono `Enter` ou `Espaço`
-**Then** um único painel contextual de correção abre, nunca uma pilha de modais, e recebe o foco
-
-**Given** o painel de correção
-**When** eu cancelo, ele falha ou conclui
-**Then** o foco retorna à mesma célula do board
-
-**Given** o histórico
-**When** undos e correções ocorrem
-**Then** nenhum pick é apagado da auditoria
-
-### Story 4.9: Superfície de seleção de sessão
-
-As a operador,
-I want uma lista curta de sessões com confirmação explícita,
-So that eu nunca restaure a sessão errada por acidente.
-
-**Acceptance Criteria:**
-
-**Given** a superfície de sessões
-**When** ela carrega
-**Then** ela mostra um skeleton durante o carregamento e não restaura nada silenciosamente
-
-**Given** sessões recuperáveis
-**When** a lista é exibida
-**Then** a mais recente está pré-selecionada e cada linha anuncia data, status e seleção
-
-**Given** a linha pré-selecionada ou outra escolhida
-**When** pressiono `Enter` ou clico em Confirmar
-**Then** só então a sessão é restaurada
-
-**Given** nenhuma sessão recuperável
-**When** a superfície é exibida
-**Then** ela explica que ainda não há sessão local e leva o foco para iniciar Preparar draft
-
-### Story 4.10: Recovery drill automatizado
-
-As a mantenedor,
-I want um teste automatizado de recuperação,
-So that a garantia de "nenhum pick perdido" seja verificável a cada release.
-
-**Acceptance Criteria:**
-
-**Given** uma sessão em andamento
-**When** o processo é reiniciado no pick 80 e novamente ao final
-**Then** o drill automatizado restaura uma sessão consistente em ambos os pontos
-
-**Given** o drill
-**When** ele conclui
-**Then** não há perda nem duplicação de picks em 100% das execuções
-
-**Given** o drill como parte da suíte
-**When** o CI roda
-**Then** ele é executável sem intervenção manual
-
----
-
-## Epic 5: Encerrar o draft e exportar
-
-Ao preencher o último slot a sessão encerra normalmente; em caso excepcional o operador aborta administrativamente com aviso persistente; e em ambos os casos exporta picks, rosters, configuração e metadados com proveniência para auditoria.
-
-### Story 5.1: Transição `complete`
-
-As a operador,
-I want que o draft encerre sozinho ao preencher o último slot,
-So that eu não registre picks fora do envelope.
-
-**Acceptance Criteria:**
-
-**Given** o último slot do draft aberto
-**When** `record_pick` registra esse pick
-**Then** a projeção resultante transiciona para `COMPLETED` na mesma transação
-
-**Given** uma sessão `COMPLETED`
-**When** a Live War Room é exibida
-**Then** o registro normal de pick deixa de estar disponível e o estado "draft completo" é explícito
-
-**Given** uma sessão `COMPLETED`
-**When** o operador acessa a exportação
-**Then** ela permanece disponível
-
-### Story 5.2: Transição `abort` administrativa
-
-As a operador,
-I want encerrar um draft incompleto em caso excepcional,
-So that eu registre o encerramento sem forçar picks inválidos.
-
-**Acceptance Criteria:**
-
-**Given** um draft incompleto
-**When** aciono Encerrar draft
-**Then** um evento `ABORT` é anexado e a sessão fica em `ABORTED`
-
-**Given** uma sessão `ABORTED`
-**When** a Live War Room é exibida
-**Then** um aviso persistente é mostrado e o registro normal de pick é bloqueado
-
-**Given** uma sessão `ABORTED`
-**When** o operador acessa auditoria e exportação
-**Then** ambas permanecem acessíveis
-
-**Given** `abort`
-**When** o comando roda
-**Then** ele é a única transição terminal além de `complete`
-
-### Story 5.3: Exportação de picks e rosters
-
-As a operador,
-I want exportar os picks e os rosters,
-So that eu consulte o resultado do draft depois.
-
-**Acceptance Criteria:**
-
-**Given** uma sessão `COMPLETED` ou `ABORTED`
-**When** eu exporto picks
-**Then** o artefato derivado contém todos os picks efetivos com overall pick, round, time e jogador
-
-**Given** a mesma sessão
-**When** eu exporto rosters
-**Then** o artefato contém o roster de cada time e o melhor lineup do operador
-
-**Given** qualquer exportação
-**When** o artefato é gerado
-**Then** ele carrega a proveniência da sessão (snapshot id/hash, hashes de configuração, versão do engine) e o hash de estado resultante
-
-**Given** as exportações
-**When** elas são gravadas
-**Then** elas ficam no diretório de dados do usuário fora do código-fonte e não são estado autoritativo
-
-### Story 5.4: Exportação de configuração e metadados
-
-As a operador,
-I want exportar a configuração e os metadados da sessão,
-So that o draft seja auditável e reproduzível.
-
-**Acceptance Criteria:**
-
-**Given** uma sessão encerrada
-**When** eu exporto configuração e metadados
-**Then** o artefato contém as regras de liga, o scoring e a política em forma canônica, com seus hashes e versões de schema
-
-**Given** o mesmo artefato
-**When** ele é gerado
-**Then** ele inclui os metadados do snapshot (temporada, geração, fontes, método) e a identidade de conteúdo
-
-**Given** a informação exportada
-**When** um auditor a examina
-**Then** ela é suficiente para vincular cada recomendação e o resultado ao snapshot, à configuração e ao estado que os produziram (reimportação portátil fica fora da V1)
-
-### Story 5.5: Superfície de pausa/exportação e estados terminais
-
-As a operador,
-I want controles secundários claros para pausar e exportar,
-So that essas ações nunca sejam confundidas com algo destrutivo.
-
-**Acceptance Criteria:**
-
-**Given** a Live War Room
-**When** os controles de pausa e exportação são exibidos
-**Then** eles são secundários, de borda fina, com a pausa sempre textual e a exportação sem aparência de ação destrutiva
-
-**Given** uma exportação em andamento
-**When** a região de exportação é exibida
-**Then** ela usa `aria-busy` e, ao concluir, anuncia o artefato disponível; ao falhar, mantém a sessão e oferece nova tentativa
-
-**Given** os estados terminais
-**When** a sessão está `COMPLETED` ou `ABORTED`
-**Then** o estado é comunicado por texto e ícone e o foco vai para Exportar após a conclusão do draft
-
----
-
-## Epic 6: Simulação e backtesting de estratégias (offline, via script)
-
-Fora do runtime live, o operador roda `scripts/simulate_draft.R` para testar a estratégia de recomendação do app contra baselines conhecidas num draft snake completo simulado, e vê a pontuação projetada de cada roster com o ranking dos times. O epic reusa o domínio funcional puro e nunca toca o command handling nem o caminho crítico do live draft.
-
-### Story 6.1: Estratégias de seleção como funções puras
+### Story 3.5: Estratégias de seleção como funções puras
 
 As a analista,
 I want cada estratégia de draft como uma função pura comparável,
@@ -1383,11 +648,11 @@ So that a simulação troque de estratégia sem mudar o runner.
 **When** ela roda
 **Then** ela usa a distância até o próximo pick do time no calendário snake e o ADP para estimar o valor sobre o próximo disponível, sem modelo de mercado externo
 
-### Story 6.2: Runner de simulação de draft snake
+### Story 3.6: Runner de simulação, avaliação e relatório
 
 As a analista,
-I want simular um draft snake completo via script,
-So that eu veja como a estratégia do app se comporta contra as outras.
+I want simular um draft snake completo via script e ver como cada estratégia se comporta,
+So that eu compare a estratégia do app contra as baselines de forma objetiva e reproduzível.
 
 **Acceptance Criteria:**
 
@@ -1403,50 +668,250 @@ So that eu veja como a estratégia do app se comporta contra as outras.
 **When** o runner processa as rodadas
 **Then** ele executa todas as 15 rodadas do snake reusando o gerador de calendário e o domínio de roster, registrando cada pick com round, overall, time, estratégia e jogador
 
-**Given** a mesma seed, snapshot e atribuição de estratégias
-**When** o runner roda duas vezes
-**Then** o resultado é idêntico
-
-**Given** o runner
-**When** ele executa
-**Then** ele não abre o banco de sessões do runtime, não anexa eventos de draft e não acessa a rede
-
-### Story 6.3: Avaliação de rosters simulados
-
-As a analista,
-I want a pontuação projetada de cada roster ao fim da simulação,
-So that eu compare as estratégias de forma objetiva.
-
-**Acceptance Criteria:**
-
 **Given** os rosters finais da simulação
 **When** a avaliação roda
-**Then** ela calcula, para cada time, os pontos projetados só dos titulares (melhor lineup), só do banco e a soma combinada
-
-**Given** as pontuações por time
-**When** a avaliação conclui
-**Then** ela produz o ranking dos times por pontuação combinada e destaca a posição do time do operador
-
-**Given** o melhor lineup na avaliação
-**When** ele é calculado
-**Then** ele usa o mesmo domínio de roster do runtime live, respeitando a elegibilidade e o FLEX RB/WR
-
-### Story 6.4: Relatório determinístico e repetição
-
-As a analista,
-I want um relatório reproduzível da simulação,
-So that eu registre e revisite os resultados.
-
-**Acceptance Criteria:**
+**Then** ela calcula, para cada time, os pontos projetados só dos titulares (melhor lineup), só do banco e a soma combinada, produz o ranking por pontuação combinada e destaca a posição do time do operador, usando o mesmo domínio de roster do runtime live
 
 **Given** uma simulação concluída
 **When** o relatório é emitido
 **Then** ele contém a ordem sorteada, as seeds, a estratégia de cada time, os picks por rodada, as pontuações (titulares/banco/combinada) e o ranking, em console e CSV
 
-**Given** o mesmo relatório
-**When** a simulação é repetida com a mesma seed
-**Then** a saída é idêntica
+**Given** a mesma seed, snapshot e atribuição de estratégias
+**When** o runner roda duas vezes
+**Then** o resultado é idêntico
 
 **Given** a opção de repetição
 **When** executo N simulações com seeds variadas
 **Then** o relatório agrega os resultados por estratégia (ex.: média e distribuição da pontuação combinada e do rank do operador)
+
+**Given** o runner
+**When** ele executa
+**Then** ele não abre o banco de sessões do runtime, não anexa eventos de draft e não acessa a rede
+
+### Story 3.4: Use cases `record_pick`, `undo_last_pick`, `correct_pick` e replay
+
+As a operador,
+I want confirmar, desfazer e corrigir picks com o estado sempre consistente,
+So that eu conduza o draft e recupere erros sem perder o ritmo nem a trilha.
+
+**Acceptance Criteria:**
+
+**Given** um jogador disponível e o pick atual
+**When** o use case `record_pick` roda com `expected_overall_pick` correto
+**Then** ele anexa exatamente um evento `RECORD_PICK` ordenado, associa o jogador ao time do slot, avança o pick atual e substitui o read model na mesma transação
+
+**Given** um jogador já registrado como pick efetivo, ou `expected_overall_pick` obsoleto
+**When** `record_pick` roda
+**Then** o comando é rejeitado com erro estruturado e instrução de recarga, nenhum evento é anexado e o estado não muda
+
+**Given** ao menos um pick efetivo
+**When** aplico `undo_last_pick`
+**Then** um evento `UNDO` é anexado, o replay passa a remover o pick efetivo mais recente, a operação é repetível e a auditoria mantém todos os eventos de undo
+
+**Given** um pick alvo no board e um jogador ainda disponível
+**When** aplico `correct_pick` nomeando o `overall_pick` alvo e o `player_id` substituto
+**Then** um evento `CORRECTION` é anexado, o replay aplica a correção na sequência e todos os picks posteriores são preservados
+
+**Given** uma correção que resultaria em jogador duplicado, violação de slot ou invalidação de qualquer pick efetivo posterior
+**When** aplico `correct_pick`
+**Then** a correção é rejeitada, nenhum evento é anexado e a interface explica qual condição falhou
+
+**Given** o log de eventos ordenado por `event_sequence`
+**When** o replay roda
+**Then** ele reconstrói o estado aplicando cada evento em ordem, sem verificação de hash de estado
+
+**Given** o último slot do draft aberto
+**When** `record_pick` registra esse pick
+**Then** a projeção resultante transiciona para `COMPLETED` na mesma transação
+
+**Given** uma interrupção do processo imediatamente após o commit de um pick
+**When** o app reinicia e a sessão é restaurada
+**Then** um teste de reabertura do banco confere que o pick confirmado está presente e o estado é consistente
+
+**Given** um draft completo simulado de 168 picks
+**When** o smoke check de latência roda
+**Then** ele conclui em tempo folgado num laptop de referência e nenhuma operação síncrona do fluxo live acessa a rede
+
+---
+
+## Epic 4: Live War Room
+
+Na tela live o operador vê o estado global, busca um jogador por teclado, registra o pick com feedback imediato e vê board, roster, disponíveis e recomendações recomporem; desfaz, corrige um pick pelo board, mantém uma blacklist e restaura sessões locais.
+
+> **Simplificações desta correção de curso (Sprint Change Proposal 2026-08-31):** tema escuro único com os design tokens do Epic 1; keyboard-first com ARIA básico (roles/labels no combobox e uma região `aria-live`) — sem `aria-controls`/`aria-activedescendant`, roving tabindex, auditoria de contraste como entregável, `prefers-reduced-motion`, leitura linear a 200% ou piso de alvo de 24 px; dois estados de layout (amplo/estreito); sem `pause`/`resume` como par de eventos.
+
+### Story 4.1: Casca da Live War Room — estado, board e roster
+
+As a operador,
+I want o pick atual, o board e o meu roster sempre à vista,
+So that eu acompanhe o estado sem procurar num dashboard.
+
+**Acceptance Criteria:**
+
+**Given** a Live War Room
+**When** ela é renderizada
+**Then** a faixa de estado fixa mostra o overall pick em `typography.display`, a rodada e o pick da rodada, o time no relógio, o último jogador registrado e o próximo pick do operador, e nunca sai da vista
+
+**Given** um comando aceito
+**When** o estado muda
+**Then** a faixa atualiza como uma unidade; o pick vivo usa `action` e os estados pausado, alerta e concluído usam texto e ícone além de cor
+
+**Given** a sessão ativa
+**When** o board é renderizado
+**Then** ele é uma grade compacta por round e time com a linha ou coluna do pick atual claramente marcada; um pick recém-registrado recebe realce transitório em `action` sem animação prolongada; os picks do operador são distinguíveis por rótulo
+
+**Given** o roster do operador
+**When** o painel é renderizado
+**Then** ele agrupa titulares, FLEX e banco em grupos visuais estáveis, torna visíveis o melhor lineup e os slots vazios, e mostra o impacto marginal do candidato em foco
+
+**Given** largura de janela ampla ou reduzida
+**When** a Live War Room é exibida
+**Then** board e roster são painéis laterais em tela ampla e painéis empilhados em tela estreita, preservando o estado, enquanto faixa de estado, busca e lista de candidatos permanecem sempre visíveis; o grid do board rola horizontalmente quando necessário
+
+### Story 4.2: Busca, lista inteligente, inspeção e teclado
+
+As a operador,
+I want um campo de busca dominante e uma lista de candidatos navegável por teclado,
+So that eu compare e registre o pick certo sem ambiguidade e sem o mouse.
+
+**Acceptance Criteria:**
+
+**Given** a Live War Room
+**When** ela é renderizada
+**Then** o campo de busca tem largura dominante, os resultados aparecem imediatamente abaixo com nome, posição e time NFL, e o resultado que `Enter` registrará usa `candidate-active` e contorno de foco
+
+**Given** o autocomplete
+**When** ele é inspecionado
+**Then** ele é um combobox com `role`, label persistente e `aria-expanded`, e uma única região `aria-live=polite` anuncia o comando aceito em frase curta
+
+**Given** a recomendação ativa
+**When** a lista inteligente é renderizada
+**Then** ela mostra ao menos cinco candidatos disponíveis ordenados pela recomendação, cada linha distinguindo score, fatores, alerta de tier cliff e impacto no roster, com a nº 1 destacada por ordem e peso tipográfico, nunca por card grande
+
+**Given** os badges de filtro de posição
+**When** eu ativo um filtro
+**Then** a lista de disponíveis e de recomendações é filtrada sem alterar o estado do draft
+
+**Given** o foco fora de uma entrada editável
+**When** uso setas, `Espaço`, `Enter`, `U` ou `/`
+**Then** as setas movem o destaque, `Espaço` abre/fecha a inspeção, `Enter` tenta registrar no pick atual, `U` aplica um undo por tecla e `/` foca a busca; dentro de uma entrada editável esses atalhos globais não disparam
+
+**Given** um candidato focado
+**When** pressiono `Espaço`
+**Then** o painel de inspeção abre numa superfície `surface-raised` sem cobrir a faixa de estado ou a busca, mostrando a explicação determinística (projeção, valor, preço de mercado, urgência quando aplicáveis), tier e impacto marginal no roster; um campo opcional ausente aparece como `Não disponível neste snapshot`; `Esc` fecha e devolve o foco à lista
+
+### Story 4.3: Feedback, erros e blacklist
+
+As a operador,
+I want confirmação breve dos picks, erros que não somem antes de eu agir e uma blacklist de jogadores,
+So that eu opere rápido sem perder informação e sem sugestões poluídas.
+
+**Acceptance Criteria:**
+
+**Given** um pick confirmado
+**When** o feedback aparece
+**Then** ele é breve, textual, próximo à faixa de estado, substitui a lista em menos de um ciclo de atenção e devolve o fluxo à busca
+
+**Given** um jogador já escolhido, nome ambíguo ou inválido
+**When** tento registrar
+**Then** nada é persistido, a mensagem identifica o motivo (e o pick efetivo quando existir) e o foco volta à busca/lista
+
+**Given** um erro ou bloqueio
+**When** ele é exibido
+**Then** ele persiste até o operador poder agir, não rouba o foco e não encobre a busca, o pick atual nem o foco de teclado; não há modal de confirmação rotineiro
+
+**Given** qualquer microcopy de confirmação, erro ou estado
+**When** ela é redigida
+**Then** ela é curta, factual e orientada à próxima ação (ex.: `Registrado: Ja'Marr Chase`, `Já escolhido no pick 42. Busque outro jogador.`), sem celebração, alarmismo ou confiança preditiva, e mensagens de domínio ficam em PT-BR
+
+**Given** o editor de blacklist na Live War Room
+**When** adiciono ou removo um jogador por busca
+**Then** a mudança tem efeito imediato, é anunciada sem roubar o foco e sobrevive a refresh sem entrar no estado do draft nem gerar evento
+
+**Given** um jogador na blacklist
+**When** a lista inteligente e as recomendações são renderizadas
+**Then** ele é omitido de ambas, mas ainda aparece na busca com marcação explícita (texto e ícone, nunca só cor) e continua draftável
+
+### Story 4.4: Undo visível, histórico, correção no board e seleção de sessão
+
+As a operador,
+I want undo sempre visível, histórico auditável, correção pelo board e restauração explícita de sessão,
+So that eu conserte erros no lugar e nunca restaure a sessão errada por acidente.
+
+**Acceptance Criteria:**
+
+**Given** a Live War Room
+**When** ela é exibida
+**Then** o controle Undo está sempre visível, acionável por `U`, com borda e texto em `warning`, mostrando o próximo pick a desfazer (overall, jogador, time) e o contador de reversões disponíveis, e não é apresentado como ação destrutiva
+
+**Given** a sessão
+**When** o histórico de eventos é renderizado
+**Then** ele lista registros, undos e correções em ordem, em `ink-muted`, cada um com alvo e resultado efetivo, sem competir com o board e sem apagar nenhum pick da auditoria
+
+**Given** uma célula de pick corrigível no board
+**When** pressiono `Enter` ou `Espaço`
+**Then** um único painel contextual de correção abre (nunca uma pilha de modais), recebe o foco e o devolve à mesma célula ao cancelar, falhar ou concluir, sem esconder os picks posteriores
+
+**Given** sessões locais existentes
+**When** abro ou recarrego o app
+**Then** uma superfície lista as sessões por `updated_at DESC`, pré-seleciona a mais nova, mostra skeleton durante o carregamento e não restaura nada silenciosamente
+
+**Given** a linha pré-selecionada ou outra escolhida
+**When** pressiono `Enter` ou clico em Confirmar
+**Then** só então a sessão é restaurada, usando o `draft_id` selecionado como único input, sem perda nem duplicação de picks
+
+**Given** nenhuma sessão recuperável
+**When** a superfície é exibida
+**Then** ela explica que ainda não há sessão local e leva o foco para iniciar Preparar draft
+
+**Given** uma sessão retomada
+**When** o operador a reabre
+**Then** um flag de status impede o registro acidental de picks até o operador retomar explicitamente (sem par de eventos `PAUSE`/`RESUME` dedicado)
+
+**Given** uma intenção mutante cujo `expected_overall_pick` não bate com o estado atual
+**When** o use case a processa
+**Then** ela é rejeitada com erro estruturado e instrução de recarga, sem alterar o estado
+
+---
+
+## Epic 5: Fechar e exportar
+
+Ao preencher o último slot a sessão encerra normalmente; o operador exporta picks, rosters, configuração e metadados do snapshot para consulta posterior.
+
+> **Simplificações desta correção de curso (Sprint Change Proposal 2026-08-31):** sem abort administrativo (`complete` é a única transição terminal); exportações em CSV/JSON simples, sem framing de proveniência "para auditor" nem hashes canônicos; quatro stories fundidas em uma.
+
+### Story 5.1: Completar e exportar
+
+As a operador,
+I want que o draft encerre ao preencher o último slot e eu possa exportar o resultado,
+So that eu não registre picks fora do envelope e consulte o draft depois.
+
+**Acceptance Criteria:**
+
+**Given** o último slot do draft aberto
+**When** `record_pick` registra esse pick
+**Then** a projeção resultante transiciona para `COMPLETED` na mesma transação (comportamento já entregue na Story 3.4)
+
+**Given** uma sessão `COMPLETED`
+**When** a Live War Room é exibida
+**Then** o registro normal de pick deixa de estar disponível, o estado "draft completo" é explícito por texto e ícone e o foco vai para Exportar
+
+**Given** uma sessão `COMPLETED`
+**When** eu exporto picks
+**Then** o artefato derivado (CSV/JSON) contém todos os picks efetivos com overall pick, round, time e jogador
+
+**Given** a mesma sessão
+**When** eu exporto rosters
+**Then** o artefato contém o roster de cada time e o melhor lineup do operador
+
+**Given** a mesma sessão
+**When** eu exporto configuração e metadados
+**Then** o artefato contém as regras de liga, o scoring e a política em forma legível, os metadados do snapshot (temporada, geração, fontes, método), o `snapshot_id`, o `snapshot_content_hash`, a versão do engine e um timestamp
+
+**Given** qualquer exportação
+**When** o artefato é gravado
+**Then** ele fica no diretório de dados do usuário fora do código-fonte e não é estado autoritativo
+
+**Given** uma exportação em andamento ou concluída
+**When** a região de exportação é exibida
+**Then** ao concluir ela anuncia o artefato disponível e, ao falhar, mantém a sessão e oferece nova tentativa; a exportação nunca aparece como ação destrutiva

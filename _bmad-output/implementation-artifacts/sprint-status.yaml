@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-30-2026 12:00
-last_updated: 08-31-2026 16:45
+last_updated: 08-31-2026 17:00
 project: Fantasy Draft War Room
 project_key: NOKEY
 tracking_system: file-system
@@ -46,60 +46,30 @@ development_status:
   epic-1-retrospective: done
 
   epic-2: backlog
-  2-1-schema-e-validação-da-configuração-da-liga: backlog
-  2-2-geração-do-calendário-snake: backlog
-  2-3-event-store-sqlite-e-migrations: backlog
-  2-4-superfície-configuração-da-liga: backlog
-  2-5-superfície-ordem-snake: backlog
-  2-6-validate-and-lock-e-evento-draft_started: backlog
+  2-1-configuração-da-liga-e-envelope-v1: backlog
+  2-2-calendário-snake-times-e-ordem: backlog
+  2-3-event-store-sqlite-mínimo-e-start: backlog
   epic-2-retrospective: optional
 
   epic-3: backlog
-  3-1-busca-local-incremental-de-jogadores: backlog
-  3-2-use-case-record_pick: backlog
-  3-3-construção-de-rosters-e-melhor-lineup: backlog
-  3-4-ganho-marginal-e-viabilidade-de-slots-obrigatórios: backlog
-  3-5-motor-de-recomendação-recommend_fast: backlog
-  3-6-faixa-de-estado: backlog
-  3-7-campo-de-busca-e-autocomplete: backlog
-  3-8-lista-inteligente-linha-de-candidato-e-filtro-de-posição: backlog
-  3-9-painel-de-inspeção-do-jogador: backlog
-  3-10-board-de-draft: backlog
-  3-11-painel-de-roster-do-operador: backlog
-  3-12-feedback-de-confirmação-e-tratamento-de-erros: backlog
-  3-13-modelo-de-interação-por-teclado-e-gestão-de-foco: backlog
-  3-14-blacklist-de-jogadores: backlog
-  3-15-gate-de-benchmark-de-latência: backlog
-  3-16-layout-responsivo-split-window-e-piso-de-acessibilidade: backlog
+  3-1-roster-melhor-lineup-e-ganho-marginal-puro: backlog
+  3-2-motor-de-recomendação-recommend_fast-puro: backlog
+  3-3-busca-incremental-de-jogadores-puro: backlog
+  3-5-estratégias-de-seleção-como-funções-puras: backlog
+  3-6-runner-de-simulação-avaliação-e-relatório: backlog
+  3-4-use-cases-record_pick-undo_last_pick-correct_pick-e-replay: backlog
   epic-3-retrospective: optional
 
   epic-4: backlog
-  4-1-replay-de-eventos-e-verificação-de-hash: backlog
-  4-2-use-case-undo_last_pick: backlog
-  4-3-use-case-correct_pick: backlog
-  4-4-use-cases-pause-e-resume: backlog
-  4-5-rejeição-de-intenção-obsoleta: backlog
-  4-6-query-de-sessões-e-restauração-explícita: backlog
-  4-7-controle-undo: backlog
-  4-8-histórico-de-eventos-e-board-em-modo-correção: backlog
-  4-9-superfície-de-seleção-de-sessão: backlog
-  4-10-recovery-drill-automatizado: backlog
+  4-1-casca-da-live-war-room-estado-board-e-roster: backlog
+  4-2-busca-lista-inteligente-inspeção-e-teclado: backlog
+  4-3-feedback-erros-e-blacklist: backlog
+  4-4-undo-visível-histórico-correção-no-board-e-seleção-de-sessão: backlog
   epic-4-retrospective: optional
 
   epic-5: backlog
-  5-1-transição-complete: backlog
-  5-2-transição-abort-administrativa: backlog
-  5-3-exportação-de-picks-e-rosters: backlog
-  5-4-exportação-de-configuração-e-metadados: backlog
-  5-5-superfície-de-pausa-exportação-e-estados-terminais: backlog
+  5-1-completar-e-exportar: backlog
   epic-5-retrospective: optional
-
-  epic-6: backlog
-  6-1-estratégias-de-seleção-como-funções-puras: backlog
-  6-2-runner-de-simulação-de-draft-snake: backlog
-  6-3-avaliação-de-rosters-simulados: backlog
-  6-4-relatório-determinístico-e-repetição: backlog
-  epic-6-retrospective: optional
 action_items:
   - id: "epic-1-retro-item-1-rodar-code-review-de-contexto-fresco-out"
     epic: 1

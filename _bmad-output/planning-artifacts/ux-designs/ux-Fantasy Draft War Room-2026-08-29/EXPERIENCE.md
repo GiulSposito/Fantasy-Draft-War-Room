@@ -3,7 +3,9 @@ name: Fantasy Draft War Room
 description: UX experience contract for the local, offline-first fantasy draft operator tool.
 status: final
 created: 2026-08-29
-updated: 2026-08-29
+updated: 2026-08-31
+change_log:
+  - "2026-08-31: Sprint Change Proposal (app local de uso único). Reduzido para keyboard-first + ARIA básico (roles/labels no combobox + uma região aria-live). Cortados como entregável: aria-controls/aria-activedescendant, roving tabindex, ordem de Tab célula a célula, `?` como referência de atalhos, zoom 200% linear, prefers-reduced-motion, piso de alvo 24x24px. Layout tem dois estados (amplo/estreito) sem painéis alternáveis que preservam foco. Sem `pause`/`resume` como fluxo dedicado. Ver sprint-change-proposal-2026-08-31.md §4.4 e a lista UX-DR anotada em epics.md."
 sources:
   - ../../prds/prd-Fantasy Draft War Room-2026-08-28/prd.md
   - ../../prds/prd-Fantasy Draft War Room-2026-08-28/data-contract.md

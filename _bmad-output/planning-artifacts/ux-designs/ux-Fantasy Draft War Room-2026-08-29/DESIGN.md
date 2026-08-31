@@ -3,7 +3,9 @@ name: Fantasy Draft War Room
 description: UX visual identity for the local, offline-first fantasy draft operator tool.
 status: final
 created: 2026-08-29
-updated: 2026-08-29
+updated: 2026-08-31
+change_log:
+  - "2026-08-31: Sprint Change Proposal (app local de uso único). Os design tokens abaixo permanecem a fonte visual. UX-DR3 (auditoria de contraste WCAG como entregável) deixa de ser uma story — os pares de token abaixo são aceitos como estão. Ver _bmad-output/planning-artifacts/sprint-change-proposal-2026-08-31.md §4.4."
 sources:
   - ../../prds/prd-Fantasy Draft War Room-2026-08-28/prd.md
   - ../../prds/prd-Fantasy Draft War Room-2026-08-28/data-contract.md

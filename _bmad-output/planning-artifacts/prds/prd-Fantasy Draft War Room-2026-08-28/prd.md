@@ -2,8 +2,10 @@
 title: "PRD — Fantasy Draft War Room"
 status: final
 created: 2026-08-28
-updated: 2026-08-28
+updated: 2026-08-31
 source_spec: "docs/fantasy-draft-war-room-spec.md"
+change_log:
+  - "2026-08-31: Sprint Change Proposal (app local de uso único) — abort administrativo e rigor formal de auditoria/benchmark saem do V1; simulação determinística por script entra no V1. Ver _bmad-output/planning-artifacts/sprint-change-proposal-2026-08-31.md."
 ---
 
 # PRD — Fantasy Draft War Room
@@ -60,11 +62,13 @@ Qualidade preditiva comparativa, previsão de disponibilidade e otimização pel
 - Exibir pelo menos cinco recomendações rápidas, com score, fatores objetivos, alerta de tier cliff quando aplicável e políticas configuráveis; os arquivos de configuração fornecem uma estratégia inicial recomendada que adia K/DST até o fim do draft.
 - Restaurar uma sessão local após reinício/refresh e exportar picks, rosters, configuração e metadados.
 - Operar inteiramente sem acesso à rede depois de o snapshot ter sido selecionado.
+- Executar, fora do runtime live, uma simulação determinística de draft snake por script (`scripts/simulate_draft.R`) que compara a estratégia de recomendação do app contra baselines conhecidas (ADP, Total Points, Random, Pure VOR, Pure VONA), reproduzível por seed. _(Adicionado pela Sprint Change Proposal 2026-08-31; reusa o domínio puro, não toca command handling nem o caminho crítico live.)_
 
 ### Não incluído no V1
 
 - Modelar probabilidade de um jogador chegar ao próximo pick, custo de esperar, corridas adaptativas de posição ou valor esperado de disponibilidade.
-- Simulações Monte Carlo, simulação de adversários, mock drafts, backtesting e avaliação do roster final esperado.
+- Simulações Monte Carlo, simulação probabilística de adversários, mock drafts e avaliação do roster final esperado. _(A simulação determinística por script — item acima — está no V1.)_
+- Encerramento administrativo de um draft incompleto (abort) e trilha de auditoria criptográfica de estado. _(Removidos pela Sprint Change Proposal 2026-08-31: `complete` é a única transição terminal; a persistência usa um log de eventos simples sem hash de estado por evento.)_
 - Integrações automáticas com ESPN, Yahoo, NFL, CBS, Sleeper ou outras plataformas; atualizações/notícias ao vivo.
 - Draft de leilão, dynasty/keeper, rookie-only, waivers, trades, playoffs, multiusuário, aplicativo nativo ou hospedagem pública multi-tenant.
 - Comparação lado a lado de candidatos e histórico detalhado das recomendações exibidas.
@@ -119,9 +123,10 @@ O contrato de entrada/saída e o tratamento de falhas do `script.R` estão no [c
 | DRAFT-001–005 Iniciar e registrar | V1 | Iniciar somente sessão pronta; registrar no slot atual, rejeitar duplicata, atribuir ao time correto e avançar. |
 | DRAFT-006 Undo | V1 | Desfazer o último pick efetivo, restaurando o estado anterior. |
 | DRAFT-007 Correção | V1 | Corrigir pick anterior e recompor automaticamente, de forma determinística, todos os efeitos posteriores. Se a correção gerar duplicidade ou outro estado inválido, rejeitá-la com motivo claro sem remover picks posteriores. |
-| DRAFT-008 Pausar/retomar | V1 | Pausa impede novos picks normais; retomada reabre a mesma sessão. |
+| DRAFT-008 Pausar/retomar | V1* | A sessão é sempre retomável do banco local; um flag de status impede registro acidental. Sem par de eventos `PAUSE`/`RESUME` dedicado (Sprint Change Proposal 2026-08-31). |
 | DRAFT-009 Restaurar | V1 | Ao abrir ou recarregar, listar sessões locais da mais recente à mais antiga, pré-selecionar a mais recente e permitir que o usuário confirme ou escolha outra para restaurar. |
-| DRAFT-010–011 Finalizar/abortar | V1 | Finalizar quando completo; permitir encerramento administrativo incompleto com aviso persistente. |
+| DRAFT-010 Finalizar | V1 | Finalizar quando completo; `complete` é a única transição terminal. |
+| DRAFT-011 Abortar | Removido | Encerramento administrativo de draft incompleto sai do V1 (Sprint Change Proposal 2026-08-31). |
 | INPUT-001–007 Busca e feedback | V1 | Busca incremental e tolerante a variações simples; mostra posição e time, oculta jogadores já escolhidos, aceita entrada por teclado, confirma o resultado e mantém undo visível. |
 | ROSTER-001–005 Roster, lineup e marginal | V1 | Construir rosters; atribuir melhor lineup conforme elegibilidade; diferenciar titular, upgrade, FLEX, banco e redundância. |
 | ROSTER-006 Completar obrigatórios | V1 | Alertar/aplicar restrição quando escolhas restantes não permitem completar slots obrigatórios. |
@@ -136,7 +141,7 @@ O contrato de entrada/saída e o tratamento de falhas do `script.R` estão no [c
 | REC-010 Filtro de posição | V1 | Usuário filtra a lista de disponíveis/recomendação por posição, sem alterar o estado. |
 | REC-011 Comparar candidatos | V2 | Comparação lado a lado entra com explicabilidade estruturada V2. |
 | REC-012 Histórico de recomendações | V2 | Registrar a lista exibida em cada pick do usuário para avaliação/calibração. |
-| PERSIST-001–004 Eventos, auditoria e reconstrução | V1 | Uma confirmação de pick é durável ou não ocorre; undo/correção deixam trilha e a sessão é reconstruível. |
+| PERSIST-001–004 Eventos, auditoria e reconstrução | V1* | Uma confirmação de pick é durável ou não ocorre; undo/correção deixam trilha num log de eventos append-only e a sessão é reconstruível por replay. Sem hash de estado por evento nem verificação criptográfica no replay (Sprint Change Proposal 2026-08-31). |
 | PERSIST-005–007 Exportar resultado | V1 | Exportar picks, rosters, configuração e metadados. |
 | PERSIST-008 Backup portátil | V2 | V1 exige recuperação local e exportações; pacote de backup/reimportação independente é extensão. |
 
@@ -159,13 +164,14 @@ O contrato de entrada/saída e o tratamento de falhas do `script.R` estão no [c
 | MAINT-001–005 Isolamento, testes, configuração e dependências | V1 (qualidade) | Gates de engenharia para proteger o produto: regra de negócio testável, módulos isolados, fórmulas/políticas alteráveis de forma controlada e dependências reproduzíveis. Detalhes pertencem ao companion de arquitetura/qualidade. |
 | EXPL-001–004 Explicabilidade | V1 | Nenhuma recomendação é apenas um número: ela mostra pelo menos três fatores e políticas/pesos consultáveis, e separa projeção, valor, preço e urgência. |
 | REP-001 Seed de simulação | V3 | Simulações repetíveis com seed registrada. |
-| REP-002 Vínculo de recomendação | V1 | Cada recomendação é associável ao snapshot, configuração e estado que a produziram. |
-| REP-003 Reabrir/reproduzir export | V1* | V1 recupera sessão local e exporta dados suficientes para auditoria; reimportação completa de pacote portátil é V2. |
-| UX-001–004 Fluxo rápido e acessível | V1 | Keyboard-first, sem confirmação rotineira por modal, status não apenas por cor e informação crítica visível na tela live. |
+| REP-002 Vínculo de recomendação | V1 | Cada recomendação é associável ao snapshot (`snapshot_id`/`snapshot_content_hash`), aos valores de configuração e ao `event_sequence` que a produziram — sem hashes canônicos de config nem de estado (Sprint Change Proposal 2026-08-31). |
+| REP-003 Reabrir/reproduzir export | V1* | V1 recupera sessão local e exporta dados suficientes para consulta posterior; reprodutibilidade por hash de estado e reimportação de pacote portátil ficam fora do V1. |
+| UX-001–004 Fluxo rápido e acessível | V1* | Keyboard-first com ARIA básico (roles/labels no combobox + uma região `aria-live`), sem confirmação rotineira por modal, status não apenas por cor e informação crítica visível na tela live. Auditoria WCAG formal, `aria-activedescendant`/roving tabindex, zoom 200% linear e `prefers-reduced-motion` ficam fora do V1; layout tem dois estados (amplo/estreito) (Sprint Change Proposal 2026-08-31). |
+| NFR25 Medição de performance | V1* | Substituído pelos smoke checks abaixo (Sprint Change Proposal 2026-08-31). |
 
 ### Base de medição V1
 
-Todos os percentis serão medidos no mesmo benchmark: snapshot de 400 jogadores, liga de 12 times e 14 rounds (168 picks), fixture determinística e execução local em um MacBook Pro com processador Intel como baseline de referência. O hardware não é requisito de produto nem gate de compatibilidade; cada execução deve registrar a configuração efetiva e a ferramenta de medição usada.
+O gate formal de benchmark p95 (fixture determinística + ferramenta de medição registrada) foi substituído, na Sprint Change Proposal 2026-08-31, por dois smoke checks: (1) um draft completo simulado de 168 picks conclui em tempo folgado num laptop de referência; (2) nenhuma operação síncrona do fluxo live acessa a rede. Os alvos de PERF-001 a PERF-005 permanecem como intenção de design, não como critério de release.
 
 ## 7. Critérios de aceite mensuráveis do release V1
 
@@ -175,21 +181,22 @@ Todos os percentis serão medidos no mesmo benchmark: snapshot de 400 jogadores,
 | AC-V1-02 | **Dado** draft pronto e jogador disponível, **quando** o manager confirma o nome no pick atual, **então** o jogador aparece uma única vez no time do slot, deixa a lista de disponíveis, o board avança e a recomendação é atualizada. |
 | AC-V1-03 | **Dado** um jogador já escolhido ou um nome ambíguo/inválido, **quando** o manager tenta confirmá-lo, **então** o pick não muda e a interface mostra motivo claro e ação de recuperação. |
 | AC-V1-04 | **Dada** qualquer sequência válida de picks, **quando** o manager desfaz o último ou corrige um pick anterior que preserva a integridade, **então** board, rosters, disponíveis e recomendações são recompostos automaticamente e a trilha mostra a alteração. **Quando** a correção geraria duplicidade ou outro estado inválido, **então** nenhuma mudança é persistida e a interface explica o motivo. |
-| AC-V1-05 | **Dadas** sessões locais existentes, incluindo uma com 80 picks confirmados, **quando** a aplicação é reiniciada/atualizada, **então** ela lista as sessões da mais recente à mais antiga, pré-seleciona a mais recente, permite escolher outra e restaura a opção confirmada sem perda ou duplicação, inclusive em um drill de recuperação automatizado. |
+| AC-V1-05 | **Dadas** sessões locais existentes, incluindo uma com 80 picks confirmados, **quando** a aplicação é reiniciada/atualizada, **então** ela lista as sessões da mais recente à mais antiga, pré-seleciona a mais recente, permite escolher outra e restaura a opção confirmada sem perda ou duplicação. Um smoke check reabre o banco após um pick commitado e confere o estado consistente. |
 | AC-V1-06 | **Dado** um pick do usuário, **quando** a lista é renderizada, **então** há ao menos cinco candidatos disponíveis e cada um tem score, explicação determinística e fatores suficientes para distinguir valor, preço de mercado e ajuste de roster; tier cliff aparece quando aplicável. |
-| AC-V1-07 | **Dado** o benchmark V1, **quando** são executados 168 picks e 100 buscas, **então** as medições de PERF-001 a PERF-005 atendem a seus respectivos limites de p95 e não há acesso à rede no fluxo live. |
-| AC-V1-08 | **Dado** draft completo de 168 picks, **quando** o último slot é preenchido, **então** a sessão encerra, nenhum jogador/pick é duplicado e picks, rosters, configuração e metadados podem ser exportados. |
+| AC-V1-07 | **Dado** o smoke check V1, **quando** um draft completo simulado de 168 picks roda, **então** ele conclui em tempo folgado num laptop de referência e nenhuma operação síncrona do fluxo live acessa a rede. |
+| AC-V1-08 | **Dado** draft completo de 168 picks, **quando** o último slot é preenchido, **então** a sessão encerra (`complete`), nenhum jogador/pick é duplicado e picks, rosters, configuração e metadados podem ser exportados. |
+| AC-V1-10 | **Dado** um snapshot e uma configuração de liga válida, **quando** executo `Rscript scripts/simulate_draft.R` com uma seed, **então** o script simula um draft snake completo comparando a estratégia do app contra as baselines, produz o ranking dos rosters (titulares/banco/combinado) e a mesma seed reproduz saída idêntica. |
 | AC-V1-09 | **Dado** pelo menos 5 participantes do público-alvo em roteiro assistido, **quando** cada um configura e conclui um draft completo de 15 rounds, incluindo ao menos uma correção, uma recarga e uma exportação, **então** pelo menos 4 concluem o fluxo sem editar código e pelo menos 4 explicam corretamente o motivo principal da recomendação top 1. É um sinal inicial de usabilidade, não validação estatística. |
 
 ## 8. Métricas de sucesso e contramétricas
 
 | ID | Métrica V1 | Meta/decisão | Fonte e janela | Contramétrica |
 |---|---|---|---|---|
-| SM-01 | Integridade do draft: perdas/duplicidades | 0 perdas ou duplicidades em 100% dos drills de 168 picks antes de liberar V1 | testes de integração e recovery drill | taxa de falha técnica; não mascarar falha removendo validações |
-| SM-02 | Recuperação | 100% de restauração consistente nos drills definidos | teste de restart no pick 80 e no fim | tempo de recuperação e necessidade de intervenção manual |
+| SM-01 | Integridade do draft: perdas/duplicidades | 0 perdas ou duplicidades nos testes de integração e no smoke check de draft completo | testes de integração + smoke check | taxa de falha técnica; não mascarar falha removendo validações |
+| SM-02 | Recuperação | Restauração consistente verificada por teste de reabertura do banco após um pick commitado | smoke check de recuperação | necessidade de intervenção manual |
 | SM-03 | Tempo humano por pick | mediana < 3 s em drafts completos de 15 rounds | pelo menos 5 testes assistidos | taxa de undo/correção; rapidez não pode aumentar erro |
 | SM-04 | Compreensão da recomendação | ≥80% dos participantes explicam o principal motivo do top 1 | pelo menos 5 testes assistidos | confiança indevida; coletar relato de discordância/ambiguidade |
 | SM-05 | Conclusão autônoma | ≥80% dos participantes concluem setup, draft completo de 15 rounds, correção, recarga e exportação sem editar código | pelo menos 5 testes assistidos | tempo até conclusão e pedidos de ajuda |
-| SM-06 | Latência do caminho crítico | cumprir PERF-001 a PERF-005 em benchmark | relatório do benchmark a cada release candidato | consumo de recursos e regressões na recuperação |
+| SM-06 | Latência do caminho crítico | o smoke check de latência passa (draft completo simulado conclui em tempo folgado; live sem rede) | smoke check a cada release candidato | consumo de recursos e regressões na recuperação |
 
 **Métricas postergadas:** presença da escolha humana no top 5, calibração de disponibilidade, estabilidade/calibração de pesos e desempenho comparativo de estratégias só serão avaliáveis quando V2/V3 introduzirem os respectivos modelos e histórico (REC-012, PNext/VONA, simulação/backtesting).

@@ -7,7 +7,9 @@ paradigm: 'Hexagonal Architecture — Functional Core, Imperative Shell'
 scope: 'Operational MVP V1: preparo local de snapshots e operação de um draft snake offline, de usuário único'
 status: final
 created: '2026-08-28'
-updated: '2026-08-29'
+updated: '2026-08-31'
+change_log:
+  - '2026-08-31: Sprint Change Proposal — app local de uso único. AD-4/5/6/7/8/9/11 relaxados, AD-12 removido. Ver _bmad-output/planning-artifacts/sprint-change-proposal-2026-08-31.md.'
 binds: [DATA, LEAGUE, ORDER, DRAFT, INPUT, ROSTER, REC, PERSIST, PERF, REL, MAINT, EXPL, REP, UX]
 sources:
   - 'docs/fantasy-draft-war-room-spec.md'
@@ -58,55 +60,54 @@ flowchart LR
 
 - **Binds:** DRAFT-002–011, PERSIST-001–004, REL-001–003
 - **Prevents:** UI-local state, mutable pick rows, and SQLite state from disagreeing after a correction or refresh.
-- **Rule:** `start`, `record_pick`, `undo_last_pick`, `correct_pick`, `pause`, `resume`, `complete`, and `abort` each enter through one application use case. Every event has versioned payload fields `{draft_id, event_sequence, event_type, expected_state_hash, expected_overall_pick, target_overall_pick, player_id, actor, created_at}` as applicable. The reducer validates the command against reconstructed state, appends exactly one ordered immutable event, and replaces the materialized read model in the same SQLite transaction. `record_pick` at the final slot transitions to `COMPLETED` in the resulting projection; administrative abort is the only other terminal command. Failed or stale validation commits nothing.
+- **Rule:** `start`, `record_pick`, `undo_last_pick`, `correct_pick`, `complete` each enter through one application use case. Every event has versioned payload fields `{draft_id, event_sequence, event_type, expected_overall_pick, target_overall_pick, player_id, actor, created_at}` as applicable. The reducer validates the command against reconstructed state, appends exactly one ordered immutable event, and replaces the materialized read model in the same SQLite transaction. `record_pick` at the final slot transitions to `COMPLETED` in the resulting projection; `complete` is the only terminal command. Failed or stale validation commits nothing.
+- **`[SIMPLIFICADO — Sprint Change Proposal 2026-08-31]`** App local de uso único: sem `expected_state_hash` no payload, sem `previous_state_hash`/`resulting_state_hash` por evento. `pause`/`resume` deixam de ser eventos — a sessão é sempre retomável do banco e um flag de status impede registro acidental. `abort` administrativo removido.
 
 ### AD-5 — Corrections preserve history and later picks `[ADOPTED]`
 
 - **Binds:** DRAFT-006–007, PERSIST-002–004, AC-V1-04
 - **Prevents:** destructive rewriting of audit history or silently discarding valid later picks.
-- **Rule:** Undo is an event that removes the latest effective pick in replay. Correction is an event naming its target `overall_pick` and replacement `player_id`; replay applies the correction in sequence. If replay would duplicate a player, violate a slot, or otherwise invalidate any effective pick, the correction is rejected and no event is appended.
+- **Rule:** Undo is an event that removes the latest effective pick in replay. Correction is an event naming its target `overall_pick` and replacement `player_id`; replay applies the correction in sequence. If replay would duplicate a player, violate a slot, or otherwise invalidate any effective pick, the correction is rejected and no event is appended. Replay reconstructs state by applying events in `event_sequence` order and does not verify state hashes `[SIMPLIFICADO — Sprint Change Proposal 2026-08-31]`.
 
 ### AD-6 — Session provenance is frozen and addressable `[ADOPTED]`
 
 - **Binds:** LEAGUE-004, REC-001–010, PERSIST-005–007, EXPL, REP
 - **Prevents:** exports and recommendations that cannot be reproduced or attributed to their inputs.
-- **Rule:** At `DRAFT_STARTED`, persist snapshot ID/content hash, canonical `scoring_config_hash`, `league_rules_hash`, `recommendation_policy_hash`, their schema versions, engine version, and optional random seed. YAML defaults are resolved and types coerced before canonical serialization and hashing. Snapshot selection requires matching `scoring_config_hash`; league rules and policy are session inputs. Every recommendation and export carries this provenance plus the resulting state hash; none of these inputs may mutate in place.
+- **Rule:** At `DRAFT_STARTED`, persist snapshot ID/content hash, the resolved **values** of scoring/league-rules/recommendation-policy config, their schema versions, engine version, and optional random seed. YAML defaults are resolved and types coerced before use. Snapshot/config scoring compatibility is a non-blocking warning, not a gate. Every recommendation and export carries this provenance (snapshot id/hash + config values + engine version + `event_sequence`); none of these inputs may mutate in place. `[SIMPLIFICADO — Sprint Change Proposal 2026-08-31]` Sem `scoring_config_hash`/`league_rules_hash`/`recommendation_policy_hash` canônicos; sem hash de estado resultante.
 
 ### AD-7 — Configuration is validated data, not executable behavior `[ASSUMPTION]`
 
 - **Binds:** LEAGUE-001–004, LEAGUE-007, REC-009, MAINT-004
 - **Prevents:** hard-coded league rules or arbitrary logic loaded from configuration files.
-- **Rule:** League, scoring, tier, and recommendation-policy files are versioned YAML schemas parsed into canonical configuration objects. The configuration validator enforces the V1 envelope before a draft can start; only declared scalar values, lists, and maps are accepted. The canonical serialization is what is hashed and stored.
+- **Rule:** League, scoring, tier, and recommendation-policy files are versioned YAML parsed into configuration objects. The configuration validator enforces the V1 envelope before a draft can start. The parsed config **values** are what is stored with the session `[SIMPLIFICADO — Sprint Change Proposal 2026-08-31: sem serialização canônica nem hashing de config]`.
 
 ### AD-8 — SQLite is the single local system of record `[ASSUMPTION]`
 
 - **Binds:** PERSIST, REL, DRAFT, PERF-001, UX-001
 - **Prevents:** separate per-browser stores, concurrent writers, or filesystem exports becoming authoritative state.
-- **Rule:** V1 runs as a single-user local Shiny process. SQLite holds sessions, slots, immutable events, an `effective_pick_projection`, materialized state, and migration history. The event log is append-only and has no uniqueness constraint on player history. A database transaction enforces monotonic `event_sequence`, unique `(draft_id, overall_pick)` in `effective_pick_projection`, unique `(draft_id, player_id)` there, and one projection sequence/state cursor per draft; event, effective picks, derived state, cursor, and hashes are replaced together. Exports are derived artifacts.
+- **Rule:** V1 runs as a single-user local Shiny process. SQLite holds sessions, slots, immutable events, an `effective_pick_projection`, and materialized state. Tables are created at boot with `CREATE TABLE IF NOT EXISTS` `[SIMPLIFICADO — Sprint Change Proposal 2026-08-31: sem runner de migrations versionadas nem histórico de migrations]`. The event log is append-only and has no uniqueness constraint on player history. A database transaction enforces monotonic `event_sequence`, unique `(draft_id, overall_pick)` and unique `(draft_id, player_id)` in `effective_pick_projection`; event, effective picks, and derived state are replaced together. Exports are derived artifacts.
 
 ### AD-9 — V1 recommendation is synchronous, fast, and explainable `[ADOPTED]`
 
 - **Binds:** REC-001–010, PERF-002–004, EXPL-001–004, REP-002
 - **Prevents:** a recommendation depending on network, unbounded simulation, stale asynchronous results, or opaque scoring.
-- **Rule:** `recommend_fast()` is a pure domain function over frozen draft state, prepared player metrics, league configuration, and policy. The live read path uses in-memory snapshot metrics and indexed available-player lookup; no scraping, SQL scan, or deep simulation is on the critical path. It returns ordered candidates with component scores, at least three applicable structured factors, reason codes, deterministic text, warnings, state hash, and engine version. V1 uses prepared VOR/tier/ADP and marginal roster value only; market forecasting and simulation do not execute on the live path. The benchmark gate is p95 ≤100 ms for pick persistence/search, ≤300 ms for recommendation, ≤500 ms for screen update, and ≤3 s startup using the 400-player, 12-team fixture.
+- **Rule:** `recommend_fast()` is a pure domain function over frozen draft state, prepared player metrics, league configuration, and policy. The live read path uses in-memory snapshot metrics and indexed available-player lookup; no scraping, SQL scan, or deep simulation is on the critical path. It returns ordered candidates with component scores, at least three applicable structured factors, reason codes, deterministic text, warnings, and engine version. V1 uses prepared VOR/tier/ADP and marginal roster value (and, if adopted, a deterministic next-pick-distance urgency factor reused from the Pure VONA strategy — no probabilistic market model); market forecasting and Monte Carlo simulation do not execute on the live path. `[SIMPLIFICADO — Sprint Change Proposal 2026-08-31]` O gate formal de benchmark p95 é substituído por smoke checks: um draft completo simulado (168 picks) conclui em tempo folgado num laptop de referência e o fluxo live não acessa a rede.
 
 ### AD-10 — Live process is local-only and observable `[ASSUMPTION]`
 
 - **Binds:** PERF-006, REL, UX, operational envelope
 - **Prevents:** an accidental public or multi-tenant service surface and failures that are invisible during the draft.
-- **Rule:** The V1 app is launched by `Rscript -e "shiny::runApp(...)"` (or the equivalent package entry point), binds to loopback, and hands its URL to the user's browser. It detects a port collision and fails with an actionable message rather than binding publicly. Database, logs, and exports reside in an OS user-data directory outside the source tree with user-only permissions where supported. Adapters emit structured local logs and command/recommendation latency metrics without recording projection source credentials. Startup checks schema migrations, writable storage, and selected bundle validation before enabling a session.
+- **Rule:** The V1 app is launched by `Rscript -e "shiny::runApp(...)"` (or the equivalent package entry point), binds to loopback, and hands its URL to the user's browser. It detects a port collision and fails with an actionable message rather than binding publicly. Database, logs, and exports reside in an OS user-data directory outside the source tree with user-only permissions where supported. Adapters emit structured local logs without recording projection source credentials. Startup checks writable storage and selected bundle validation before enabling a session.
 
 ### AD-11 — Recovery selection is explicit and stale intents are rejected `[ADOPTED]`
 
 - **Binds:** DRAFT-009, REL-001–002, UX-001–004
 - **Prevents:** restoring an unintended session or applying a keyboard action to a state that changed after the screen rendered.
-- **Rule:** An application query lists local sessions by `updated_at DESC` and preselects the newest, but restoration occurs only after an explicit user confirmation or selection. The selected `draft_id` is the sole restore input. Every mutating UI intent carries `expected_state_hash` and (for picks) `expected_overall_pick`; the use case rejects stale intents with a structured error and reload instruction.
+- **Rule:** An application query lists local sessions by `updated_at DESC` and preselects the newest, but restoration occurs only after an explicit user confirmation or selection. The selected `draft_id` is the sole restore input. Pick intents carry `expected_overall_pick`; the use case rejects stale intents with a structured error and reload instruction `[SIMPLIFICADO — Sprint Change Proposal 2026-08-31: sem `expected_state_hash`]`.
 
-### AD-12 — Canonical state and event replay have one byte-level contract `[ASSUMPTION]`
+### AD-12 — `[REMOVIDO — Sprint Change Proposal 2026-08-31]`
 
-- **Binds:** AD-4, AD-5, AD-6, AD-8, AD-9, REP-002–003
-- **Prevents:** two reducers, exporters, or recommendation caches producing different hashes for the same draft.
-- **Rule:** `draft_state_hash = SHA-256(canonical_json_v1(state_subset))`, where the subset is `{draft_id, status, current_overall_pick, effective_picks sorted by overall_pick, rosters sorted by team_id/player_id, remaining_slots sorted by team_id/slot, pinned provenance}`. Canonical JSON uses UTF-8, LF, sorted object keys, fixed decimal representation, explicit `null` for missing values, and excludes timestamps, latency, and UI-only fields. Every event stores both `previous_state_hash` and `resulting_state_hash`; replay verifies both before materializing.
+Removido para o app local de uso único. Não há contrato de hash de estado byte-level nem `canonical_json_v1`. O replay (AD-5) reconstrói o estado aplicando eventos em ordem de `event_sequence` com a serialização interna que for conveniente; a consistência é verificada por testes, não por hashes reproduzíveis entre implementações.
 
 ## Consistency Conventions
 
@@ -115,11 +116,11 @@ flowchart LR
 | R names | `snake_case`; pure domain functions are verbs (`record_pick`); domain values and columns are `snake_case`. |
 | Identifiers | Immutable text IDs: `snapshot_id`, `player_id`, `draft_id`, `event_id`, `fantasy_team_id`; hashes are lowercase SHA-256 hex. |
 | Time and ordering | UTC ISO-8601 timestamps; `event_sequence` is the authoritative order, never timestamp order. `overall_pick` is unique only in the effective projection. |
-| Canonicalization | Snapshot manifests and state hashes use UTF-8, LF, sorted keys/paths, explicit nulls, and fixed numeric formatting as specified by AD-3/AD-12. |
+| Canonicalization | Snapshot manifests use UTF-8, LF, sorted keys/paths, explicit nulls, and fixed numeric formatting as specified by AD-3. (State hashing removed — AD-12.) |
 | Events and errors | Event types are UPPER_SNAKE_CASE. Domain failures use a stable `code`, human-safe Portuguese message, and machine-readable details. |
 | State mutation | UI emits intents only; application use cases own transactions; domain owns validation; adapters own I/O. |
-| Configuration | Source YAML is versioned; canonical parsed form is hashed; no live session reads mutable configuration. |
-| Testing | Unit-test domain functions outside Shiny/SQLite. Test use cases against a temporary SQLite database; acceptance fixtures use the V1 12-team benchmark. |
+| Configuration | Source YAML is versioned; parsed config values are stored with the session; no live session reads mutable configuration. |
+| Testing | Unit-test domain functions outside Shiny/SQLite. Test use cases against a temporary SQLite database. Smoke checks cover full-draft latency and a DB-reopen recovery test; acceptance fixtures use the V1 12-team dataset. |
 
 ## Stack
 
@@ -177,16 +178,17 @@ FantasyDraftWarRoom/
   renv.lock                   # exact dependency and remote revisions
   app.R                       # local Shiny composition root only
   R/
-    domain_*.R                # pure league, schedule, state, roster, recommendation rules
+    domain_*.R                # pure league, schedule, state, roster, recommendation, strategy rules
     application_*.R           # command/query use cases and port contracts
-    adapter_sqlite_*.R        # event store, read model, migrations
+    adapter_sqlite_*.R        # event store, read model (CREATE TABLE IF NOT EXISTS at boot)
     adapter_files_*.R         # snapshot, YAML, export, log adapters
     ui_*.R                    # Shiny modules and presenters
   scripts/
     prepare_snapshot.R        # pre-draft CLI entry point
+    simulate_draft.R          # offline strategy-comparison simulation
   config/                     # versioned YAML defaults and schemas
-  inst/schema/                # SQLite migrations and snapshot schema
-  tests/                      # unit, integration, recovery, benchmark fixtures
+  inst/schema/                # SQLite schema and snapshot schema
+  tests/                      # unit, integration, smoke (full-draft latency, DB-reopen recovery)
 ```
 
 ## Capability → Architecture Map
@@ -196,15 +198,16 @@ FantasyDraftWarRoom/
 | Snapshot generation and quality | `scripts/`, file adapter | AD-2, AD-3 |
 | League, schedule, slots, roster | domain | AD-1, AD-7 |
 | Pick, undo, correction, lifecycle | application + SQLite adapter | AD-4, AD-5, AD-8 |
-| Search and keyboard flow | Shiny UI + application queries | AD-1, conventions |
+| Search and keyboard flow | domain query + Shiny UI | AD-1, conventions |
 | Fast recommendation and explanation | domain + Shiny presenter | AD-1, AD-6, AD-9 |
+| Strategy simulation (offline) | domain + `scripts/simulate_draft.R` | AD-1, AD-9 |
 | Recovery, session selection, export | application + SQLite/file adapters | AD-4, AD-6, AD-8 |
 | Performance, local operation, logs | composition root + adapters | AD-2, AD-10 |
 
 ## Deferred
 
 - **V2 market-aware engine:** probability of availability, VONA, positional runs, historical recommendations, and candidate comparison wait for a validated market model; they must enter as pure domain inputs and never weaken AD-9.
-- **V3 simulation engine:** Monte Carlo, asynchronous jobs, mock drafts, and backtesting wait until their result-versioning and stale-result contract is specified; they remain outside command handling.
+- **V3 simulation engine:** Monte Carlo, asynchronous jobs, and probabilistic opponent modeling wait until their result-versioning and stale-result contract is specified; they remain outside command handling. _(Deterministic snake-draft simulation and strategy backtesting via `scripts/simulate_draft.R` are pulled into V1 by the Sprint Change Proposal 2026-08-31 — pure domain, offline, no command handling.)_
 - **Portable session re-import:** V1 exports audit-ready artifacts but does not promise package re-import. Define an import/migration and trust contract before adding it.
 - **Distribution and updates:** installer, code-signing, auto-update, and hosted deployment are out of V1. Any future hosted mode must replace AD-10 with explicit tenancy, authentication, secret, and concurrency decisions.
 - **Projection-provider resilience:** provider selection, source credentials, and source-level retries belong to the pre-draft pipeline contract; V1 runtime stays insulated by AD-2.
