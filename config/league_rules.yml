@@ -1,0 +1,30 @@
+# Configuracao de referencia da liga e envelope V1 (Story 2.1).
+#
+# Dado validado, nao comportamento (AD-7): `parse_league_config()` parseia
+# este YAML num objeto canonico e `validate_league_envelope()` impoe o
+# envelope V1 antes do `Validate and Lock` (Story 2.3). Sem hashing desta
+# config (Sprint Change Proposal 2026-08-31). `tiers` e `recommendation_policy`
+# NAO moram aqui -- a forma canonica e do `recommend_fast()` (Epic 3).
+#
+# Envelope V1: 8-14 times; exatamente 15 rounds; composicao EXATA de 9
+# titulares (QB, 2 RB, 2 WR, TE, FLEX, K, D/ST); 6 reservas que preenchem os
+# 15 rounds; FLEX aceita apenas RB ou WR. Incremente `config_version` a cada
+# mudanca estrutural.
+config_version: "league-config-v1"
+
+teams: 12
+rounds: 15
+scoring: full_ppr
+
+starter_slots:
+  QB: 1
+  RB: 2
+  WR: 2
+  TE: 1
+  FLEX: 1
+  K: 1
+  DST: 1
+
+flex_eligibility: [RB, WR]
+
+bench_size: 6
