@@ -8,6 +8,13 @@
 source("R/domain_errors.R")
 source("R/app_bootstrap.R")
 source("R/ui_theme.R")
+source("R/domain_snapshot_hash.R")
+source("R/domain_snapshot_schema.R")
+source("R/domain_snapshot.R")
+source("R/domain_snapshot_quality.R")
+source("R/adapter_files_snapshot.R")
+source("R/application_load_snapshot.R")
+source("R/ui_snapshot_quality.R")
 
 port <- resolve_bind_port(getOption("fdwr.port", 3939L))
 if (is_domain_error(port)) {
@@ -42,10 +49,11 @@ httpuv::stopServer(probe)
 ui <- shiny::fluidPage(
   fdwr_theme_head(),
   shiny::tags$h1("Fantasy Draft War Room"),
-  shiny::tags$p("Composition root ativo. Superficies entram nas proximas stories.")
+  snapshot_quality_ui("snapshot")
 )
 
 server <- function(input, output, session) {
+  snapshot_quality_server("snapshot")
 }
 
 shiny::runApp(

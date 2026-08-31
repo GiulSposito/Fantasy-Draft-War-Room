@@ -85,3 +85,9 @@ Itens reais levantados durante o build, fora do escopo da story que os expôs. C
 - source_spec: `spec-1-6-design-tokens-tema-escuro.md`
   summary: Sem checagem reversa token↔CSS; `--focus-ring-color` nunca é afirmado contra `var(--color-focus)`.
   evidence: Teste `(a)` só cobre `DESIGN.md` → CSS. Uma custom property a mais ou com valor errado em `theme.css` que `DESIGN.md` não nomeia só é pega pelo teste "sem hex fora do `:root`". Adicionar uma afirmação reversa e uma pro `--focus-ring-color`.
+
+## Deferred from: code review of spec-1-7 (2026-08-31)
+
+- source_spec: `spec-1-7-superficie-selecionar-validar-snapshot.md`
+  summary: `aria-busy` da região de resultado nunca fica observável como `"true"` durante a leitura do bundle.
+  evidence: O carregamento em `snapshot_quality_server()` é R síncrono e bloqueia o processo; `rv$busy` alterna `TRUE` → `FALSE` dentro de um único flush reativo, então o cliente só vê `aria-busy="false"`. O atributo está no markup e o estado alterna, mas a semântica AA de "ocupado durante a leitura" só é real com carregamento assíncrono (`shiny::ExtendedTask` / promises), uma mudança maior fora do escopo da primeira superfície. Revisitar quando a 1.7 (ou uma story de a11y) adotar carga assíncrona.

@@ -93,6 +93,71 @@ test_that("read_metadata_overrides: objeto JSON ok; array -> bundle_formato_inva
   expect_identical(err$code, "bundle_formato_invalido")
 })
 
+list_bundles_root <- function(envir = parent.frame()) {
+  root <- withr::local_tempdir(.local_envir = envir)
+  canon <- c("players.csv", "metrics.csv", "metadata.json", "qa-report.json")
+  fill <- function(name) {
+    d <- file.path(root, name)
+    dir.create(d)
+    file.copy(file.path(valid_dir, canon), d)
+    d
+  }
+  list(root = root, fill = fill)
+}
+
+test_that("list_snapshot_bundles: ordem desc, ignora dirs sem os 4 arquivos", {
+  ctx <- list_bundles_root()
+  ids <- c(
+    "snap-2025-20250101T000000Z", "snap-2025-20250103T000000Z",
+    "snap-2025-20250102T000000Z"
+  )
+  for (id in ids) ctx$fill(id)
+  dir.create(file.path(ctx$root, "incompleto")) # sem arquivos -> ignorado
+  file.copy(file.path(valid_dir, "players.csv"), file.path(ctx$root, "incompleto"))
+
+  bundles <- list_snapshot_bundles(ctx$root)
+  expect_identical(basename(bundles), c(
+    "snap-2025-20250103T000000Z", "snap-2025-20250102T000000Z",
+    "snap-2025-20250101T000000Z"
+  ))
+})
+
+test_that("list_snapshot_bundles: dir tmp-snapshot-* completo e ignorado", {
+  ctx <- list_bundles_root()
+  ctx$fill("snap-2025-20250101T000000Z")
+  ctx$fill("tmp-snapshot-abc123") # run morto de write_snapshot_bundle
+
+  bundles <- list_snapshot_bundles(ctx$root)
+  expect_identical(basename(bundles), "snap-2025-20250101T000000Z")
+})
+
+test_that("list_snapshot_bundles: root ausente ou sem bundles -> character(0)", {
+  expect_identical(list_snapshot_bundles(file.path(tempdir(), "nao-existe-xyz")), character(0))
+  expect_identical(list_snapshot_bundles(withr::local_tempdir()), character(0))
+})
+
+test_that("list_snapshot_bundles: root e um arquivo -> snapshot_root_ilegivel", {
+  f <- withr::local_tempfile()
+  file.create(f)
+  err <- list_snapshot_bundles(f)
+  expect_true(is_domain_error(err))
+  expect_identical(err$code, "snapshot_root_ilegivel")
+})
+
+test_that("list_snapshot_bundles: root ilegivel -> domain_error snapshot_root_ilegivel", {
+  skip_on_os("windows")
+  skip_if(unname(Sys.info()["user"]) == "root", "root ignora permissoes")
+  root <- withr::local_tempdir()
+  ro <- file.path(root, "ro")
+  dir.create(ro)
+  Sys.chmod(ro, "0000")
+  withr::defer(Sys.chmod(ro, "0700"))
+
+  err <- list_snapshot_bundles(ro)
+  expect_true(is_domain_error(err))
+  expect_identical(err$code, "snapshot_root_ilegivel")
+})
+
 test_that("resolve_snapshot_root: --out vence; sem override cai no R_user_dir", {
   expect_identical(resolve_snapshot_root("/tmp/x"), path.expand("/tmp/x"))
   default_root <- resolve_snapshot_root(NULL)

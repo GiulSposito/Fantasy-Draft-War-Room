@@ -198,6 +198,50 @@ read_metadata_overrides <- function(json_path) {
   out
 }
 
+#' Lista os snapshot bundles preparados sob `root`
+#'
+#' Enumera os subdiretorios diretos de `root` cujo nome casa com o padrao de
+#' `snapshot_id` (`snap-<season>-<YYYYMMDDTHHMMSSZ>`, ver [new_snapshot_id()]) e
+#' que contem os 4 arquivos canonicos (`snapshot_bundle_files`), ordenados por
+#' nome em ordem decrescente. O filtro de padrao descarta os `tmp-snapshot-*` de
+#' execucoes mortas de [write_snapshot_bundle()] (bundles meio-escritos).
+#'
+#' @param root Diretorio raiz dos bundles (default [resolve_snapshot_root()]).
+#' @return Vetor de caminhos absolutos dos diretorios de bundle, ordem `desc`;
+#'   `character(0)` se `root` nao existe ou nao tem bundle; um [domain_error()]
+#'   `"snapshot_root_ilegivel"` se `root` existe mas nao e um diretorio legivel.
+#' @export
+list_snapshot_bundles <- function(root = resolve_snapshot_root()) {
+  stopifnot(is.character(root), length(root) == 1L, nzchar(root))
+
+  if (!dir.exists(root)) {
+    if (file.exists(root)) {
+      return(domain_error(
+        "snapshot_root_ilegivel",
+        sprintf("Não é um diretório: %s.", root),
+        list(root = root)
+      ))
+    }
+    return(character(0))
+  }
+  if (file.access(root, 4L) != 0L) {
+    return(domain_error(
+      "snapshot_root_ilegivel",
+      sprintf("Diretório de snapshots ilegível: %s.", root),
+      list(root = root)
+    ))
+  }
+
+  subdirs <- list.dirs(root, full.names = TRUE, recursive = FALSE)
+  keep <- vapply(subdirs, function(d) {
+    grepl("^snap-[0-9]+-[0-9]{8}T[0-9]{6}Z$", basename(d)) &&
+      all(file.exists(file.path(d, snapshot_bundle_files)))
+  }, logical(1L))
+  bundles <- subdirs[keep]
+  bundles <- bundles[order(basename(bundles), method = "radix", decreasing = TRUE)]
+  if (length(bundles)) normalizePath(bundles) else bundles
+}
+
 #' Resolve o diretorio raiz onde os bundles sao gravados
 #'
 #' @param out_override `--out` do CLI (ou `NULL`).

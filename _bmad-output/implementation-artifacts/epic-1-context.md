@@ -4,7 +4,7 @@
 
 ## Goal
 
-Este epic estabelece a fundação do produto: o pacote R local (estrutura semente, `renv`, composition root Shiny em loopback, harness de testes fora de Shiny/SQLite) e o pipeline de dados pré-draft. O operador gera um snapshot canônico de projeções com `scripts/prepare_snapshot.R` antes do draft, seleciona o bundle no app e vê temporada, fontes, método, scoring, cobertura e avisos de qualidade. Dados inválidos bloqueiam o avanço para a configuração da liga com motivo concreto e ação de recuperação. O runtime live nunca adquire nem enriquece dados e não acessa a rede. O epic também entrega os design tokens base (tema escuro único) e a superfície "Selecionar e validar snapshot".
+Este epic estabelece a fundação do produto e a fronteira de dados. O operador prepara, fora do runtime live, um snapshot canônico de projeções por linha de comando; depois seleciona esse bundle no app e vê temporada, geração, fontes, método, scoring, cobertura e avisos de qualidade. Dados inválidos bloqueiam o início do draft com causa concreta e sempre uma ação de recuperação (reexecutar o script ou escolher outro bundle). Além da superfície "Qualidade do snapshot", o epic entrega o scaffold do pacote R (estrutura de pastas, `renv`, composition root Shiny em loopback, harness de testes fora de Shiny/SQLite), o CLI de preparo que usa `ffanalytics`, o adapter de arquivos/bundle, o schema e parser puro do snapshot, o hashing canônico SHA-256 do manifesto e da configuração de scoring, a validação de qualidade como domínio puro, e os design tokens base (tema escuro único).
 
 ## Stories
 
@@ -18,45 +18,42 @@ Este epic estabelece a fundação do produto: o pacote R local (estrutura sement
 
 ## Requirements & Constraints
 
-- App inicia por comando único (`Rscript -e "shiny::runApp(...)"`), faz bind em loopback, imprime a URL local, nunca escuta em interface pública. Colisão de porta falha com mensagem acionável em vez de escolher outra porta ou expor publicamente. Startup só habilita sessão após checar migrations, storage gravável e validação do bundle.
-- Storage, logs e exports ficam em diretório de dados do usuário fora do código-fonte, permissões user-only; logs estruturados sem credenciais de fontes.
-- Pipeline pré-draft e runtime live são fronteiras de confiança separadas: só `scripts/prepare_snapshot.R` adquire/enriquece dados e usa `ffanalytics`; o runtime aceita apenas bundles locais já validados e não usa rede. Inicialização com snapshot válido ≤ 3 s (p95), medida com fixture determinística registrada.
-- Bundle canônico: `players.csv`, `metrics.csv`, `metadata.json`, `qa-report.json`.
-- Campos mínimos por jogador: `player_id`, `display_name`, `normalized_name`, `position` normalizada (conjunto V1: `QB`, `RB`, `WR`, `TE`, `K`, `DST` — qualquer variação de `D/ST` mapeia para `DST`), `points`, `vor`, `tier`, `tier_cliff` obrigatórios; `nfl_team` obrigatório quando conhecido. Opcionais: `floor`, `ceiling`, `sd_points`, `ecr`, `adp`, `adp_sd`, `uncertainty`, `bye_week` — ausência é visível e não bloqueia.
-- Metadados obrigatórios: `snapshot_id` (único), `season`, `generated_at`, `pipeline_version`, `source_list`, `scoring_hash`, `content_hash`, `qa_summary`; mais versão de schema.
-- `snapshot_content_hash` = SHA-256 de um manifesto canônico: bytes UTF-8/LF normalizados, paths relativos ordenados, SHA-256 de cada arquivo; exclui o campo de hash derivado em `metadata.json`, inclui todos os demais bytes. Hex minúsculo, idêntico entre máquinas, muda com qualquer byte alterado.
-- `scoring_config_hash` = serialização canônica do YAML de scoring (chaves ordenadas, `null` explícito, decimal fixo); deve bater com o `scoring_hash` do `metadata.json`.
-- CLI: recebe YAML de scoring compatível com `ffanalytics`, coleta via commit fixado, calcula `points`/`vor`/`tier`/`tier_cliff`, emite bundle validado com metadados, `qa-report.json` e hashes. Modo fallback aceita CSV manual (campos obrigatórios + metadados) e produz o mesmo formato. Cada execução gera `snapshot_id` novo, não sobrescreve bundles anteriores. Falha de coleta ou config inválida termina com exit code não-zero e mensagem acionável, sem bundle parcial.
-- Validação de qualidade: classifica cada achado como bloqueante ou aviso, lista determinística. Bloqueiam: campo obrigatório ou metadado ausente; `player_id` duplicado; nome ambíguo sem desambiguação; posição fora do conjunto V1; ADP inválido quando informado; `qa-report` ausente ou marcado bloqueante; hash de scoring divergente da configuração ativa. Opcionais ausentes ou cobertura anômala não crítica = aviso.
-- Parser e validação de qualidade são domínio puro: sem exceção não tratada; falhas retornam domain error estruturado com `code` estável, mensagem PT-BR e detalhes machine-readable.
-- Neste epic o snapshot selecionado já é o input imutável da sessão em preparação (trocar exige reiniciar o preparo); a imutabilidade pós-início da sessão é fechada no Epic 2.
+- A preparação pré-draft e o runtime live são fronteiras de confiança separadas: só o CLI de preparo adquire ou enriquece dados e pode usar `ffanalytics`; o runtime live não acessa a rede em nenhuma operação e só aceita bundles locais já validados.
+- O bundle é `players.csv`, `metrics.csv`, `metadata.json` e `qa-report.json`. Campos obrigatórios por jogador: `player_id`, `display_name`, `normalized_name`, `position` normalizada (`QB`/`RB`/`WR`/`TE`/`K`/`DST`), `points`, `vor`, `tier`, `tier_cliff`; `nfl_team` quando conhecido; `floor/ceiling/sd_points/ecr/adp/adp_sd/uncertainty/bye_week` são opcionais e sua ausência deve ser visível mas nunca bloqueante. Metadados obrigatórios: `snapshot_id`, versão de schema, `season`, `generated_at`, `pipeline_version`, `source_list`, `scoring_hash`, `content_hash`, `qa_summary`.
+- Importação CSV manual é aceita apenas quando traz todos os campos obrigatórios e os metadados necessários para gerar hashes e relatório de qualidade.
+- Gates bloqueantes da validação: campo obrigatório ou metadado ausente; `player_id` duplicado ou nome ambíguo sem desambiguação; posição fora do conjunto V1 ou D/ST não normalizada; ADP inválido quando informado; `qa-report` ausente ou marcado como bloqueante. Divergência de hash de scoring é bloqueante como compatibilidade (o gate efetivo no `start` pertence ao Epic 2). Achados são classificados como bloqueante ou aviso e a lista é determinística.
+- Cada snapshot tem `snapshot_id` único; execuções nunca sobrescrevem bundles anteriores. Falha de coleta ou configuração inválida termina com exit code não-zero e mensagem acionável, sem emitir bundle parcial.
+- O snapshot selecionado é o input imutável da sessão em preparação; trocá-lo exige reiniciar o preparo (a imutabilidade pós-início vem no Epic 2).
+- Startup do app: bind em loopback, detecção de colisão de porta com falha acionável (nunca escolher outra porta nem expor publicamente), checagem de migrations e storage gravável antes de habilitar sessão. Storage/logs/exports ficam em diretório de dados do usuário fora do código-fonte.
+- Metas de performance relevantes: inicialização com snapshot válido em ≤ 3 s.
 
 ## Technical Decisions
 
-- Paradigma Hexagonal — núcleo funcional puro, shell imperativo. Domínio determinístico, recebe todo input explicitamente, retorna valores ou domain errors, nunca importa `shiny`, `DBI`, `RSQLite`, `yaml`, filesystem, clock ou APIs reativas. Casos de uso da aplicação são os únicos que chamam comandos de domínio e ports; adaptadores fazem I/O.
-- Estrutura semente: `DESCRIPTION`, `renv.lock`, `app.R` (só composition root), `R/domain_*.R`, `R/application_*.R`, `R/adapter_sqlite_*.R`, `R/adapter_files_*.R`, `R/ui_*.R`, `scripts/prepare_snapshot.R`, `config/` (YAML versionado + schemas), `inst/schema/` (migrations SQLite + schema de snapshot), `tests/` (unit, integração, recovery, benchmark).
-- O file adapter lista bundles locais e faz a leitura crua; parsing/normalização ficam no domínio puro — o mesmo parser serve o `script.R` e o runtime.
-- Configuração é dado validado, não comportamento: YAML versionado, só escalares/listas/mapas declarados; a forma canônica serializada é o que se hasheia e armazena.
-- Convenções: `snake_case`; funções de domínio são verbos; IDs de texto imutáveis; hashes SHA-256 hex minúsculo; timestamps UTC ISO-8601; event types UPPER_SNAKE_CASE. Linter aplica essas convenções.
-- Testes: domínio testado fora de Shiny/SQLite; `devtools::test()` roda a suíte `testthat` desde o clone limpo.
-- Dependências reproduzíveis por `renv.lock`. Stack: R 4.6.0, Shiny 1.14.0, DBI 1.3.0, RSQLite/SQLite 3.53.3, `ffanalytics` 3.x commit `1955daa05efb4a1f38c9a4dee609c5c4eaf84b4d` (só pré-draft).
+- Arquitetura hexagonal, núcleo funcional / casca imperativa. O domínio é determinístico, recebe todo input explicitamente, retorna valores ou erros de domínio estruturados, e nunca importa `shiny`, `DBI`, `RSQLite`, `yaml`, filesystem, relógio ou APIs reativas. Casos de uso da aplicação são os únicos chamadores de comandos de domínio e de ports. A UI só emite intenções.
+- Erros de domínio: `code` estável + mensagem PT-BR + detalhes machine-readable; nunca exceção não tratada. Parser e validação retornam esse formato.
+- Manifesto canônico do `snapshot_content_hash`: SHA-256 sobre bytes normalizados UTF-8/LF, paths relativos ordenados e o SHA-256 de cada arquivo; exclui o campo de hash derivado dentro de `metadata.json` e inclui todos os demais bytes. Resultado em hex minúsculo, idêntico entre máquinas; qualquer byte alterado muda o hash.
+- `scoring_config_hash`: serialização canônica do YAML de scoring (chaves ordenadas, `null` explícito, numérico fixo) e deve bater com o `scoring_hash` gravado em `metadata.json`.
+- Configuração é dado validado, não comportamento: YAML versionado, parseado em objetos canônicos, aceitando apenas escalares, listas e mapas declarados; a forma canônica é o que se hasheia.
+- Convenções: nomes `snake_case`; funções de domínio são verbos; IDs de texto imutáveis; hashes SHA-256 hex minúsculo; timestamps UTC ISO-8601; event types UPPER_SNAKE_CASE.
+- Estrutura semente: `DESCRIPTION`, `renv.lock`, `app.R` (composition root), `R/domain_*.R`, `R/application_*.R`, `R/adapter_sqlite_*.R`, `R/adapter_files_*.R`, `R/ui_*.R`, `scripts/prepare_snapshot.R`, `config/` (YAML + schemas), `inst/schema/` (migrations SQLite + schema de snapshot), `tests/` (unit, integração, recovery, benchmark).
+- Stack fixada: R 4.6.0, Shiny 1.14.0, DBI 1.3.0, RSQLite/SQLite 3.53.3, `renv` (lock), `ffanalytics` 3.x commit `1955daa05efb4a1f38c9a4dee609c5c4eaf84b4d` (somente pré-draft). Sem starter template. Testes de domínio rodam fora de Shiny/SQLite; fixtures de aceitação usam a base de 400 jogadores / 12 times.
+- Design tokens (`DESIGN.md`) são a única fonte visual: `colors` (canvas, surface, surface-raised, border, ink, ink-muted, action, focus, warning, danger, action-ink), `typography` (display/data/label em pilha monoespaçada do sistema), `spacing`, `rounded` (sm 2px / md 4px / full 9999px) e tokens por componente. Nenhum valor visual fora dos tokens. Tema escuro único, sem modo claro no V1.
+- Semântica de cor: `action` só em pick vivo/confirmação/ação a executar; `focus` só em foco de teclado e resultado selecionado; `warning` em undo e estado que pede conferência; `danger` só em falha/conflito/ação inválida. Todo estado carrega texto, ícone ou rótulo além da cor.
+- Contraste WCAG 2.2 AA: `ink` sobre canvas/surface/surface-raised ≥ 4.5:1; `ink-muted` ≥ 4.5:1 e restrito a metadados não críticos; `focus`/`action`/`warning`/`danger` como indicador não textual ≥ 3:1. Os valores iniciais dos tokens são assunções a auditar em uso real.
 
 ## UX & Interaction Patterns
 
-- Design tokens de `DESIGN.md` são a única fonte visual — nenhuma cor ou métrica fora dos tokens. Tema escuro único, sem modo claro no V1. Tokens: `colors` (canvas, surface, surface-raised, border, ink, ink-muted, action, action-ink, focus, warning, danger), `typography` (display 18px/700, data 14px/500, label 11px/700 caixa alta, pilha monoespaçada do sistema), `spacing`, `rounded` (sm 2px / md 4px / full 9999px) e tokens por componente.
-- Semântica de cor: `action` (verde) só em pick vivo/confirmação/ação a executar; `focus` (azul) em foco de teclado e resultado selecionado; `warning` (âmbar) em undo e estado que pede conferência; `danger` (vermelho) só em falha/conflito/ação inválida. Todo estado carrega texto, ícone ou rótulo além da cor.
-- Contraste WCAG 2.2 AA: `ink` sobre canvas/surface/surface-raised ≥ 4.5:1; `ink-muted` ≥ 4.5:1 e só em metadados não críticos; `focus`/`action`/`warning`/`danger` como indicador não textual ≥ 3:1. Valores iniciais devem ser auditados em uso real.
-- Superfície "Qualidade do snapshot": resume cobertura, metadados e avisos; a região usa `aria-busy` durante a leitura. Falha de leitura mantém a seleção e oferece reexecutar `script.R` ou escolher outro bundle.
-- Bloqueio: avanço desabilitado, causa concreta em `danger` identificando campo/incompatibilidade, sempre com ação de recuperação (reexecutar `script.R` ou selecionar outro snapshot).
-- Campos opcionais ausentes aparecem sinalizados explicitamente ("Não disponível neste snapshot") e não bloqueiam.
-- Microcopy curto, factual, orientado à próxima ação; mensagens de domínio em PT-BR; sem celebração nem alarmismo.
-- Fluxo J-01: operador roda `script.R`, abre "Preparar draft", seleciona o snapshot, revisa temporada/geração/fontes/scoring/cobertura/avisos, confirma ausência de bloqueios; quando válido, a interface libera a configuração da liga, sem acesso de rede.
+- Superfície "Qualidade do snapshot": resume cobertura, metadados e avisos; a região usa `aria-busy` durante a leitura do bundle. Bloqueio usa `danger`, identifica o campo/incompatibilidade e sempre oferece ação de recuperação (reexecutar o script ou selecionar outro snapshot). Falha de leitura mantém a seleção atual e oferece as mesmas ações.
+- O adapter de arquivos lista os bundles locais disponíveis e o operador seleciona um explicitamente — nenhuma seleção silenciosa.
+- Após um bundle válido, a superfície exibe temporada, geração, fontes, método, scoring e identidade de conteúdo, e libera o avanço para a configuração da liga.
+- Campos opcionais ausentes aparecem sinalizados explicitamente (ex.: `Não disponível neste snapshot`) e não bloqueiam o avanço.
+- Microcopy: texto curto, factual, orientado à próxima ação; mensagens de domínio em PT-BR; sem celebração nem alarmismo.
 
 ## Cross-Story Dependencies
 
-- Story 1.1 (scaffold, composition root, harness de testes) é pré-requisito de todas as demais.
-- Story 1.2 (parser/schema) alimenta 1.3 (hash), 1.5 (validação) e 1.7 (superfície); 1.4 (CLI) compartilha o mesmo parser.
-- Story 1.4 produz os bundles que 1.5 e 1.7 consomem.
-- Story 1.6 (design tokens) é pré-requisito visual da 1.7 e de todas as superfícies dos epics seguintes.
-- O gate de compatibilidade `scoring_config_hash` (achado bloqueante na validação) tem enforcement efetivo no `start`/`DRAFT_STARTED` no Epic 2 (Story 2.6).
-- O snapshot selecionado aqui é o input congelado para o Epic 2 (`DRAFT_STARTED` grava `snapshot_id` e `snapshot_content_hash`) e para o motor de recomendação do Epic 3.
+- Story 1.1 (scaffold, composition root, harness de testes, convenções de nome) é pré-requisito de todas as demais.
+- Story 1.2 (parser/schema do bundle) alimenta 1.3 (hash do manifesto), 1.5 (validação de qualidade) e 1.7 (superfície).
+- Story 1.3 produz `snapshot_content_hash` e `scoring_config_hash` consumidos pela superfície 1.7 e, adiante, pelo gate de `start` e pela proveniência congelada no Epic 2.
+- Story 1.4 (CLI de preparo) produz os bundles que 1.7 lista e valida; compartilha schema e regras de hash com 1.2/1.3.
+- Story 1.6 (design tokens) é pré-requisito visual de 1.7 e de toda superfície dos epics seguintes.
+- A imutabilidade do snapshot após o início da sessão e o gate efetivo de compatibilidade de scoring no `start` são completados no Epic 2 (`DRAFT_STARTED`).

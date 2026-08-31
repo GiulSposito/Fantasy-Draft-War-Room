@@ -187,6 +187,9 @@ test_that("(integration) app.R serve o stylesheet de tema", {
   }
   skip_if(is.null(home), "app nao subiu a tempo")
 
+  # o modulo da Story 1.7 entra no ui/server do app.R
+  expect_match(home, "fdwr-snapshot-quality")
+
   href <- sub('"$', "", sub('^href="', "", regmatches(home, regexpr('href="[^"]+theme\\.css"', home))))
   con <- url(file.path(base, href))
   on.exit(close(con), add = TRUE)
