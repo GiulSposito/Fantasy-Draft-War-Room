@@ -83,7 +83,24 @@ test_that("domain_error na entrada passa direto", {
   expect_identical(parse_league_config(err), err)
 })
 
+test_that("numerico nao-finito ou fora do range de integer -> league_config_tipo_invalido", {
+  for (bad in list(Inf, -Inf, NaN, 3e10, .Machine$integer.max + 1)) {
+    e <- parse_league_config(ref_map(teams = bad))
+    expect_true(is_domain_error(e))
+    expect_identical(e$code, "league_config_tipo_invalido")
+    expect_identical(e$details$campo, "teams")
+  }
+})
+
 # --- validate_league_envelope -------------------------------------------
+
+test_that("domain_error na entrada -> achado bloqueante, nao excecao", {
+  e <- parse_league_config(ref_map(teams = NULL))
+  f <- validate_league_envelope(e)
+  expect_length(f, 1L)
+  expect_identical(f[[1]]$code, e$code)
+  expect_identical(f[[1]]$severity, "bloqueante")
+})
 
 test_that("times fora do envelope -> league_times_fora_do_envelope, grupo times_rounds", {
   for (n in c(7L, 15L)) {
@@ -187,6 +204,14 @@ test_that("scoring ativo indisponivel -> aviso league_scoring_indisponivel prese
   expect_identical(f$severity, "aviso")
   expect_identical(f$details$code, err$code)
   expect_identical(f$message, err$message)
+})
+
+test_that("metadata do snapshot indisponivel -> aviso league_scoring_indisponivel, nao incompativel", {
+  err <- read_snapshot_bundle(file.path(withr::local_tempdir(), "nao-existe"))
+  f <- league_scoring_compat_finding(league_scoring(), err)
+  expect_identical(f$code, "league_scoring_indisponivel")
+  expect_identical(f$severity, "aviso")
+  expect_identical(f$details$code, err$code)
 })
 
 # --- pureza -----------------------------------------------------------

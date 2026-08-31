@@ -51,8 +51,13 @@ league_scalar_chr <- function(value, campo) {
 }
 
 # Escalar numerico de valor inteiro coagido para `integer`, ou domain_error.
+# Rejeita Inf/NaN/NA e valores fora do range de `integer` -- senao
+# `as.integer()` devolveria `NA_integer_` (so com warning) e a checagem de
+# envelope quebraria com um `if (NA)`.
 league_scalar_int <- function(value, campo) {
-  if (length(value) != 1L || !is.numeric(value) || is.na(value) || value != round(value)) {
+  int_ok <- length(value) == 1L && is.numeric(value) && is.finite(value) &&
+    abs(value) <= .Machine$integer.max && value == round(value)
+  if (!int_ok) {
     return(league_config_type_error(campo, "um inteiro"))
   }
   as.integer(round(value))
@@ -221,7 +226,14 @@ league_envelope_finding <- function(code, message, grupo, details = list()) {
 #'   `list()`. Mesma entrada -> `identical()`.
 #' @export
 validate_league_envelope <- function(config) {
-  stopifnot(is.list(config), !is_domain_error(config))
+  # Falha de dominio e valor, nunca excecao -- espelha `validate_snapshot_quality()`.
+  if (is_domain_error(config)) {
+    return(list(snapshot_quality_finding(
+      config$code, "bloqueante", config$message,
+      if (is.list(config$details)) config$details else list()
+    )))
+  }
+  stopifnot(is.list(config))
   acc <- new.env(parent = emptyenv())
   acc$items <- list()
   add <- function(f) acc$items[[length(acc$items) + 1L]] <- f
@@ -321,10 +333,16 @@ validate_league_envelope <- function(config) {
 #'   "scoring"`.
 #' @export
 league_scoring_compat_finding <- function(active_scoring_parsed, snapshot_metadata) {
+  indisponivel <- NULL
   if (is_domain_error(active_scoring_parsed)) {
+    indisponivel <- active_scoring_parsed
+  } else if (is_domain_error(snapshot_metadata)) {
+    indisponivel <- snapshot_metadata
+  }
+  if (!is.null(indisponivel)) {
     return(snapshot_quality_finding(
-      "league_scoring_indisponivel", "aviso", active_scoring_parsed$message,
-      list(code = active_scoring_parsed$code, grupo = "scoring")
+      "league_scoring_indisponivel", "aviso", indisponivel$message,
+      list(code = indisponivel$code, grupo = "scoring")
     ))
   }
   res <- verify_scoring_hash(active_scoring_parsed, snapshot_metadata)
