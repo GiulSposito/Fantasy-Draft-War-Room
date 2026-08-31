@@ -13,8 +13,9 @@
 # `domain_error()` (nunca excecao). Determinismo: mesma entrada -> saida
 # `identical()` em qualquer execucao, inclusive sob `LC_COLLATE=C`.
 #
-# Persistencia, SQLite e o evento `DRAFT_STARTED` sao Story 2.3. A superficie
-# Shiny de setup foi separada (ver `deferred-work.md`, split 2026-08-31).
+# O event store SQLite e a Story 2.3; o `start_draft` e o evento `DRAFT_STARTED`
+# sao a Story 2.4. A superficie Shiny de setup foi separada (ver
+# `deferred-work.md`, split 2026-08-31).
 
 # Inteiro finito de valor >= 1 no range de `integer`, ou domain_error.
 # Espelha `league_scalar_int()` de `R/domain_league_config.R` mas com o `code`

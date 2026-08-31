@@ -13,6 +13,7 @@ source("R/domain_snapshot_schema.R")
 source("R/domain_snapshot.R")
 source("R/domain_snapshot_quality.R")
 source("R/adapter_files_snapshot.R")
+source("R/adapter_sqlite_event_store.R")
 source("R/application_load_snapshot.R")
 source("R/ui_snapshot_quality.R")
 
@@ -45,6 +46,14 @@ if (inherits(probe, "error")) {
   stop(msg, call. = FALSE)
 }
 httpuv::stopServer(probe)
+
+# Event store SQLite: cria/abre o banco e roda CREATE TABLE IF NOT EXISTS.
+event_store <- boot_event_store()
+if (is_domain_error(event_store)) {
+  message(event_store$message)
+  quit(status = 1L, save = "no")
+}
+shiny::onStop(function() try(DBI::dbDisconnect(event_store), silent = TRUE))
 
 ui <- shiny::fluidPage(
   fdwr_theme_head(),

@@ -117,3 +117,15 @@ Itens reais levantados durante o build, fora do escopo da story que os expôs. C
 - source_spec: `spec-2-2-calendario-snake-times-ordem.md`
   summary: `parse_league_teams()` não valida unicidade de `display_name` — dois times podem exibir o mesmo nome.
   evidence: A spec exige id imutável único e exatamente um time do operador, mas não menciona `display_name`. Para o operador escolhendo o próprio time numa lista durante o draft ao vivo, nomes iguais são uma ambiguidade real. A checagem (ou a decisão explícita de permitir colisão) pertence à story da superfície de setup separada, onde o nome é renderizado.
+
+## Deferred from: split da Story 2.3 (2026-08-31)
+
+- source_spec: `spec-2-3-event-store-sqlite-start.md`
+  summary: Use case `start_draft()` + evento `DRAFT_STARTED` + proveniência congelada + `draft_session_started()` (nova Story 2.4).
+  evidence: Split acordado com o operador no `bmad-build`. A spec de ponta a ponta (event store + `start`) passou de ~2100 tokens, acima do teto de 1600 do bmad-build (risco de context-rot no agente de implementação). A Story 2.3 foi estreitada para o event store SQLite puro: schema das 5 tabelas, adapter (`event_store_init` idempotente, pragmas WAL/foreign_keys, `event_store_next_sequence`, wrapper de transação genérico, as duas `UNIQUE` da `effective_pick_projection`, rollback) e o wiring de boot. A Story 2.4 constrói `start_draft(con, snapshot_meta, league_config, team_entries, first_round_order, seed, clock, engine_version)`: precondições reusando `validate_league_envelope`/`validate_first_round_order` (sem tocar o banco se inviável), depois a transação única — `draft_session` com proveniência (valores resolvidos, AD-6), `draft_slot` via `snake_schedule`, `DRAFT_STARTED` com `event_sequence = 1`, `draft_state` (`status = "DRAFTING"`, `next_overall_pick = 1`) — e `new_draft_id()` / `draft_start_findings()` / `draft_started_payload()` no domínio puro `R/domain_draft_session.R`. Fecha o Epic 2.
+
+## Deferred from: code review da spec-2-3 (2026-08-31)
+
+- source_spec: `spec-2-3-event-store-sqlite-start.md`
+  summary: `event_store_transaction()` embrulha qualquer `domain_error` retornado por `fn` num genérico `event_store_transacao_falhou`, perdendo o `code`/`details` original.
+  evidence: O comportamento bate com a I/O Matrix frozen da 2.3, mas o code review apontou que o Epic 3 (record_pick / undo / correct) vai querer despachar na causa real ("jogador já escolhido", "pick fora de ordem") em vez de num código único. A Story 2.4 (`start_draft`) é a primeira a passar um `fn` que pode retornar `domain_error` de negócio — decidir lá se `event_store_transaction()` passa o erro original adiante (só embrulhando `stop()` genuíno) ou se `start_draft` faz as precondições fora da transação (o plano atual) e o embrulho genérico basta.

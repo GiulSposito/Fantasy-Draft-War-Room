@@ -14,8 +14,10 @@ RoxygenNote: 7.3.2
 Depends:
     R (>= 4.6)
 Imports:
+    DBI (>= 1.2.0),
     digest (>= 0.6.30),
     jsonlite (>= 1.8.0),
+    RSQLite (>= 2.3.0),
     shiny (>= 1.14.0),
     utils,
     yaml (>= 2.3.0)
