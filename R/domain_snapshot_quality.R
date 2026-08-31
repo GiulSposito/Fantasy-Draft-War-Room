@@ -86,6 +86,14 @@ snapshot_quality_qa_entries <- function(x) {
     return(lapply(seq_len(nrow(x)), function(i) as.list(x[i, , drop = FALSE])))
   }
   if (is.list(x)) {
+    # `findings` como objeto JSON unico (jsonlite nao simplifica p/ data.frame
+    # quando ha so uma entrada com forma irregular): um list(code=, severity=,
+    # message=) solto -- envolve como lista de 1 entrada.
+    looks_like_entry <- any(c("code", "severity", "message") %in% names(x)) &&
+      !any(vapply(x, is.list, logical(1L)))
+    if (looks_like_entry) {
+      return(list(x))
+    }
     return(x)
   }
   list()
@@ -110,6 +118,14 @@ snapshot_quality_scalar_chr <- function(x, fallback) {
 #'   adapter falhou), devolve exatamente um achado bloqueante que preserva o
 #'   `code` e a mensagem. Se nao for lista nem `domain_error`, devolve um
 #'   `snapshot_bundle_ilegivel`.
+#'
+#'   Pre-condicao: `parse_snapshot_bundle()` (fail-fast) roda antes no pipeline.
+#'   Ele cobre `snapshot_bundle_vazio` (players/metrics sem linhas),
+#'   `snapshot_join_incompleto` e a validacao do *valor* de `schema_version` --
+#'   checagens que esta lista coletar-tudo NAO replica. A lista e complemento do
+#'   parser (checagens semanticas + modo coletar-tudo), nao substituto: um
+#'   bundle estruturalmente degenerado ja foi barrado pelo parser antes de
+#'   chegar aqui.
 #' @param active_scoring_parsed Lista parseada do `scoring.yml` ativo -- de
 #'   [read_scoring_config()]. Se for um [domain_error()], devolve um
 #'   `snapshot_scoring_indisponivel` e pula a checagem de hash de scoring.
@@ -136,6 +152,8 @@ validate_snapshot_quality <- function(deserialized, active_scoring_parsed) {
   players <- deserialized$players
   metrics <- deserialized$metrics
   metadata <- deserialized$metadata
+  players_illegible <- !is.null(players) && !is.data.frame(players)
+  metrics_illegible <- !is.null(metrics) && !is.data.frame(metrics)
   if (!is.data.frame(players)) {
     players <- data.frame()
   }
@@ -145,17 +163,45 @@ validate_snapshot_quality <- function(deserialized, active_scoring_parsed) {
   metadata_ok <- is.list(metadata) && !is.data.frame(metadata)
   metadata_illegible <- !is.null(metadata) && !metadata_ok
 
-  scoring_err <- if (is_domain_error(active_scoring_parsed)) active_scoring_parsed else NULL
+  # scoring ativo inutilizavel: domain_error (adapter falhou) OU tipo degenerado
+  # (nao-lista / data.frame) -- espelha os guards de `deserialized`/`metadata`.
+  scoring_unusable <- NULL
+  if (is_domain_error(active_scoring_parsed)) {
+    scoring_unusable <- list(
+      message = active_scoring_parsed$message, code = active_scoring_parsed$code
+    )
+  } else if (!is.list(active_scoring_parsed) || is.data.frame(active_scoring_parsed)) {
+    scoring_unusable <- list(
+      message = "Scoring ativo indisponivel: esperado uma lista parseada ou um erro de dominio.",
+      code = "scoring_tipo_invalido"
+    )
+  }
 
   acc <- new.env(parent = emptyenv())
   acc$items <- list()
   add <- function(f) acc$items[[length(acc$items) + 1L]] <- f
 
-  # --- scoring indisponivel (adapter do scoring falhou) -------------------
-  if (!is.null(scoring_err)) {
+  # --- tabela ilegivel (nao desserializou para data.frame) ---------------
+  if (players_illegible) {
     add(snapshot_quality_finding(
-      "snapshot_scoring_indisponivel", "bloqueante", scoring_err$message,
-      list(code = scoring_err$code)
+      "snapshot_tabela_ilegivel", "bloqueante",
+      "players.csv nao desserializou para uma tabela.",
+      list(tabela = "players.csv")
+    ))
+  }
+  if (metrics_illegible) {
+    add(snapshot_quality_finding(
+      "snapshot_tabela_ilegivel", "bloqueante",
+      "metrics.csv nao desserializou para uma tabela.",
+      list(tabela = "metrics.csv")
+    ))
+  }
+
+  # --- scoring indisponivel (adapter do scoring falhou / tipo invalido) ---
+  if (!is.null(scoring_unusable)) {
+    add(snapshot_quality_finding(
+      "snapshot_scoring_indisponivel", "bloqueante", scoring_unusable$message,
+      list(code = scoring_unusable$code)
     ))
   }
 
@@ -186,8 +232,12 @@ validate_snapshot_quality <- function(deserialized, active_scoring_parsed) {
       }
     }
   }
-  check_required(players, schema$players, "players.csv")
-  check_required(metrics, schema$metrics, "metrics.csv")
+  if (!players_illegible) {
+    check_required(players, schema$players, "players.csv")
+  }
+  if (!metrics_illegible) {
+    check_required(metrics, schema$metrics, "metrics.csv")
+  }
 
   # --- metadados obrigatorios ----------------------------------------------
   if (metadata_illegible) {
@@ -202,7 +252,7 @@ validate_snapshot_quality <- function(deserialized, active_scoring_parsed) {
       missing <- is.null(value) ||
         length(value) == 0L ||
         all(is.na(value)) ||
-        (is.character(value) && length(value) == 1L && !nzchar(value))
+        (is.character(value) && length(value) == 1L && !nzchar(trimws(value)))
       if (missing) {
         add(snapshot_quality_finding(
           "snapshot_metadado_ausente", "bloqueante",
@@ -316,16 +366,18 @@ validate_snapshot_quality <- function(deserialized, active_scoring_parsed) {
   }
 
   # --- scoring incompativel -------------------------------------------
-  if (metadata_ok && is.null(scoring_err)) {
+  if (metadata_ok && is.null(scoring_unusable)) {
     sres <- tryCatch(
       verify_scoring_hash(active_scoring_parsed, metadata),
       error = function(e) {
-        domain_error("snapshot_scoring_incompativel", conditionMessage(e), list())
+        # erro inesperado (scoring passou o guard de tipo mas quebrou
+        # `canonical_json`): `code` distinto de um mismatch real.
+        domain_error("snapshot_scoring_erro", conditionMessage(e), list())
       }
     )
     if (is_domain_error(sres)) {
       add(snapshot_quality_finding(
-        "snapshot_scoring_incompativel", "bloqueante", sres$message,
+        sres$code, "bloqueante", sres$message,
         if (is.list(sres$details)) sres$details else list()
       ))
     }
@@ -361,7 +413,11 @@ validate_snapshot_quality <- function(deserialized, active_scoring_parsed) {
 
   # --- opcionais ausentes (aviso) ------------------------------------
   optional_tables <- list(players = schema$players, metrics = schema$metrics)
+  illegible_by_table <- c(players = players_illegible, metrics = metrics_illegible)
   for (tbl_name in names(optional_tables)) {
+    if (isTRUE(illegible_by_table[[tbl_name]])) {
+      next
+    }
     spec <- optional_tables[[tbl_name]]
     df <- if (identical(tbl_name, "players")) players else metrics
     for (campo in names(spec)) {
@@ -379,13 +435,16 @@ validate_snapshot_quality <- function(deserialized, active_scoring_parsed) {
   }
 
   # --- cobertura anomala (aviso) ------------------------------------
-  for (pos in positions_v1) {
-    if (!pos %in% present_pos) {
-      add(snapshot_quality_finding(
-        "snapshot_cobertura_anomala", "aviso",
-        sprintf("Nenhum jogador na posição %s.", pos),
-        list(posicao = pos)
-      ))
+  # players ilegivel ja e um bloqueante; nao inundar com 6 avisos de cobertura.
+  if (!players_illegible) {
+    for (pos in positions_v1) {
+      if (!pos %in% present_pos) {
+        add(snapshot_quality_finding(
+          "snapshot_cobertura_anomala", "aviso",
+          sprintf("Nenhum jogador na posição %s.", pos),
+          list(posicao = pos)
+        ))
+      }
     }
   }
 

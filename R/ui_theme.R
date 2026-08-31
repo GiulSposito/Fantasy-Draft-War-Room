@@ -24,6 +24,13 @@
 #'   `fdwr-theme/theme.css`.
 #' @export
 fdwr_theme_head <- function() {
+  if (!dir.exists("www")) {
+    stop(
+      "fdwr_theme_head(): diretorio 'www' nao encontrado no working directory ",
+      "(esperado: raiz do repo). Rode o app / os testes a partir da raiz.",
+      call. = FALSE
+    )
+  }
   shiny::addResourcePath("fdwr-theme", "www")
   shiny::tags$head(
     shiny::tags$link(rel = "stylesheet", href = "fdwr-theme/theme.css")

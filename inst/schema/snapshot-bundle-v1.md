@@ -229,16 +229,24 @@ primeiro problema), e devolve uma lista ordenada de achados
 nem re-roda a coleta. É a fonte da lista consumida pelo gate de início
 (Epic 2, Story 2.6) e pela superfície "Qualidade do snapshot" (Story 1.7).
 
+**Pré-condição:** `parse_snapshot_bundle()` (fail-fast) roda antes no pipeline.
+Ele cobre `snapshot_bundle_vazio` (`players`/`metrics` sem linhas),
+`snapshot_join_incompleto` e a validação do *valor* de `schema_version` —
+checagens que esta lista coletar-tudo **não** replica. A lista é complemento do
+parser (checagens semânticas + modo coletar-tudo), não substituto.
+
 Se `deserialized` já for um `domain_error` (o adapter falhou), a saída é
 **um** único achado bloqueante que preserva o `code`, a mensagem e os detalhes
 do erro. Se `deserialized` não for lista nem `domain_error`, a saída é um único
 `snapshot_bundle_ilegivel`. Se `active_scoring_parsed` for um `domain_error`
-(o `read_scoring_config` falhou), a saída inclui um `snapshot_scoring_indisponivel`
-(preserva `code`/`message` do erro) e a checagem de hash de scoring é pulada.
+(o `read_scoring_config` falhou) ou um tipo degenerado (não-lista / `data.frame`),
+a saída inclui um `snapshot_scoring_indisponivel` (preserva `code`/`message` do
+erro, ou `code = "scoring_tipo_invalido"`) e a checagem de hash de scoring é pulada.
 
 | Checagem | `code` | Severidade | `details` |
 |---|---|---|---|
 | `deserialized` não é lista nem `domain_error` | `snapshot_bundle_ilegivel` | bloqueante | — |
+| `players`/`metrics` presente mas não é `data.frame` (uma por tabela; suprime a cascata de campos/opcionais/cobertura daquela tabela) | `snapshot_tabela_ilegivel` | bloqueante | `tabela` |
 | Campo obrigatório de jogador `NA` ou coluna ausente (todos os obrigatórios de `players`/`metrics`, `player_id` incluso, por tabela) | `snapshot_campo_obrigatorio_ausente` | bloqueante | `campo`, `player_id`, `tabela` |
 | `metadata` presente mas não é objeto JSON (array / escalar) | `snapshot_metadado_ilegivel` | bloqueante | — |
 | Metadado obrigatório ausente/nulo/vazio ou todo `NA` (inclui multi-elemento) | `snapshot_metadado_ausente` | bloqueante | `campo` |
@@ -246,8 +254,9 @@ do erro. Se `deserialized` não for lista nem `domain_error`, a saída é um ún
 | Nome ambíguo: `(normalized_name, position normalizada, nfl_team)` repetida em 2+ `player_id` (`nfl_team` `NA` em ambos não distingue; linhas com `normalized_name` em branco são ignoradas) | `snapshot_nome_ambiguo` | bloqueante | `normalized_name`, `player_ids` |
 | `position` fora do conjunto V1 após `normalize_position()` | `snapshot_posicao_fora_do_v1` | bloqueante | `player_id`, `raw` |
 | `adp` informado (inclui `NaN` numérico) mas não `> 0` e finito | `snapshot_adp_invalido` | bloqueante | `player_id`, `valor` |
-| `active_scoring_parsed` é um `domain_error` | `snapshot_scoring_indisponivel` | bloqueante | `code` |
+| `active_scoring_parsed` é um `domain_error` ou tipo degenerado (não-lista / `data.frame`) | `snapshot_scoring_indisponivel` | bloqueante | `code` |
 | `scoring_config_hash(ativo)` ≠ `metadata$scoring_hash` (via `verify_scoring_hash()`) | `snapshot_scoring_incompativel` | bloqueante | `esperado`, `encontrado` |
+| `verify_scoring_hash()` lança erro inesperado (scoring passou o guard de tipo mas quebrou `canonical_json`) | `snapshot_scoring_erro` | bloqueante | — |
 | `qa-report` ausente, não é objeto, ou objeto sem a chave `findings` | `qa_report_ausente` | bloqueante | — |
 | Entrada de `qa_report$findings` com `severity = "bloqueante"` (uma por entrada, preserva `code`/`message`) | `qa_report_bloqueante` | bloqueante | `qa_code` |
 | Entrada de `qa_report$findings` com outra severidade | `qa_report_aviso` | aviso | `qa_code`, `severity` |

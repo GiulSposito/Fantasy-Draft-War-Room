@@ -54,6 +54,7 @@ components:
   focus-ring:
     color: '{colors.focus}'
     width: 2px
+    offset: 2px
   status-strip:
     background: '{colors.surface}'
     foreground: '{colors.ink}'

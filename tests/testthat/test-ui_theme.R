@@ -75,6 +75,10 @@ test_that("(a) todo token de DESIGN.md aparece no CSS com valor identico", {
     css_custom_property(css, "--focus-ring-width"),
     as.character(design$components[["focus-ring"]][["width"]])
   )
+  expect_identical(
+    css_custom_property(css, "--focus-ring-offset"),
+    as.character(design$components[["focus-ring"]][["offset"]])
+  )
 })
 
 test_that("(b) contrastes WCAG dos pares permitidos atingem os limiares AA", {
@@ -173,6 +177,13 @@ test_that("(integration) app.R serve o stylesheet de tema", {
       error = function(e) NULL
     )
     if (!is.null(home) || !proc$is_alive()) break
+  }
+  if (is.null(home) && !proc$is_alive()) {
+    fail(paste0(
+      "app.R morreu durante o boot (regressao na fiacao de tema?):\n",
+      paste(proc$read_all_error_lines(), collapse = "\n")
+    ))
+    return(invisible())
   }
   skip_if(is.null(home), "app nao subiu a tempo")
 

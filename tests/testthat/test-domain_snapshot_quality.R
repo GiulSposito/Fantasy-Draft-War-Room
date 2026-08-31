@@ -319,6 +319,53 @@ test_that("adapter falhou: exatamente um bloqueante derivado, code + message + d
   expect_identical(f[[1]]$details, err$details)
 })
 
+test_that("players nao-data.frame -> um snapshot_tabela_ilegivel, cascata daquela tabela suprimida", {
+  d <- raw_bundle()
+  d$players <- "corrompido"
+  f <- validate_snapshot_quality(d, active_scoring())
+  hit <- by_code(f, "snapshot_tabela_ilegivel")
+  expect_length(hit, 1L)
+  expect_identical(hit[[1]]$details$tabela, "players.csv")
+  # sem inundacao: nenhum campo-obrigatorio-ausente de players, nenhuma cobertura anomala
+  pl_req <- Filter(function(x) {
+    identical(x$code, "snapshot_campo_obrigatorio_ausente") &&
+      identical(x$details$tabela, "players.csv")
+  }, f)
+  expect_length(pl_req, 0L)
+  expect_length(by_code(f, "snapshot_cobertura_anomala"), 0L)
+})
+
+test_that("active_scoring_parsed tipo degenerado (nao-lista) -> snapshot_scoring_indisponivel", {
+  f <- validate_snapshot_quality(raw_bundle(), 42)
+  hit <- by_code(f, "snapshot_scoring_indisponivel")
+  expect_length(hit, 1L)
+  expect_identical(hit[[1]]$details$code, "scoring_tipo_invalido")
+  # hash de scoring pulado
+  expect_length(by_code(f, "snapshot_scoring_incompativel"), 0L)
+})
+
+test_that("qa_report$findings como objeto JSON unico -> tratado como 1 entrada", {
+  d <- raw_bundle()
+  d$qa_report$findings <- list(code = "x", severity = "bloqueante", message = "falha unica")
+  f <- validate_snapshot_quality(d, active_scoring())
+  hit <- by_code(f, "qa_report_bloqueante")
+  expect_length(hit, 1L)
+  expect_identical(hit[[1]]$message, "falha unica")
+  expect_length(by_code(f, "qa_report_ausente"), 0L)
+})
+
+test_that("metadado so com espacos em branco -> ausente (trim aplicado)", {
+  d <- raw_bundle()
+  campo <- names(snapshot_schema()$metadata)[[1]]
+  d$metadata[[campo]] <- "   "
+  f <- validate_snapshot_quality(d, active_scoring())
+  hit <- Filter(function(x) {
+    identical(x$code, "snapshot_metadado_ausente") &&
+      identical(x$details$campo, campo)
+  }, f)
+  expect_length(hit, 1L)
+})
+
 test_that("dominio puro: sem I/O, sem yaml/jsonlite/ffanalytics/clock", {
   src <- readLines(test_path("..", "..", "R", "domain_snapshot_quality.R"))
   code <- src[!grepl("^\\s*#", src) & !grepl("^#'", src)]

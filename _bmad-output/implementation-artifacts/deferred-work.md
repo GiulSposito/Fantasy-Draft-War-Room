@@ -61,3 +61,27 @@ Itens reais levantados durante o build, fora do escopo da story que os expôs. C
 - source_spec: `spec-1-6-design-tokens-tema-escuro.md`
   summary: `fdwr_theme_head()` resolve `www/` relativo ao working directory do processo (a raiz do repo).
   evidence: Assunção pré-existente do projeto inteiro — `app.R` faz `source("R/...")` relativo, o CLI usa `pkgload::load_all`, o script de regeneração roda da raiz. Se algum dia o app precisar rodar de outro cwd (empacotamento, instalação), `app.R` (sources), o CLI, e o resource-path de `fdwr_theme_head` precisam ser revisitados juntos — mover os assets para `inst/` e usar `system.file()`.
+
+## Deferred from: code review of spec-1-5 (2026-08-31)
+
+- source_spec: `spec-1-5-validacao-qualidade-snapshot.md`
+  summary: Achado `snapshot_nome_ambiguo` some quando o grupo ambíguo inteiro não tem `player_id`.
+  evidence: `sort(unique(ids[grp]))` com `ids` todos `NA` → `length(pids) >= 2L` falha e o achado não é emitido. As linhas já pegam `snapshot_campo_obrigatorio_ausente` (player_id), então o bundle ainda é bloqueado. Trocar o gate por `length(grp) >= 2L` e reportar `player_ids` como o subconjunto não-`NA` (ou `NA`).
+
+- source_spec: `spec-1-5-validacao-qualidade-snapshot.md`
+  summary: A regex de pureza em `test-domain_snapshot_quality.R` é mais estreita que a prosa ("não lê o clock").
+  evidence: `forbidden` bloqueia só `Sys.(time|getenv)`; `Sys.Date`, `date()`, `proc.time`, `Sys.setlocale` passariam. Existem três regexes de pureza distintas (spec Verification, teste, deferred-work). O código não chama nenhuma dessas funções; alinhar as três e ampliar a do teste.
+
+- source_spec: `spec-1-5-validacao-qualidade-snapshot.md`
+  summary: Dois predicados independentes de "metadado ausente" (`R/domain_snapshot.R` vs `R/domain_snapshot_quality.R`).
+  evidence: `snapshot_validate_metadata()` usa `length(value)==1 && is.na(value)`; a validação de qualidade usa `all(is.na(value))`. Discordam em valores multi-elemento/mistos e vão derivar. Extrair um predicado compartilhado se a duplicação crescer.
+
+## Deferred from: code review of spec-1-6 (2026-08-31)
+
+- source_spec: `spec-1-6-design-tokens-tema-escuro.md`
+  summary: Guarda token↔CSS `(a)` e contraste WCAG `(b)` pulam silenciosamente sob `R CMD check`.
+  evidence: Ambos fazem `skip_if_not(file.exists(design_path))` e `DESIGN.md` está sob `_bmad-output/` (Rbuildignored). São os únicos guardas ligando `www/theme.css` a `DESIGN.md` e as únicas checagens WCAG. Rodam sob `devtools::test()` do source tree (a verificação declarada da spec). Copiar o frontmatter YAML pra `tests/testthat/fixtures/` fecharia o gap do check empacotado.
+
+- source_spec: `spec-1-6-design-tokens-tema-escuro.md`
+  summary: Sem checagem reversa token↔CSS; `--focus-ring-color` nunca é afirmado contra `var(--color-focus)`.
+  evidence: Teste `(a)` só cobre `DESIGN.md` → CSS. Uma custom property a mais ou com valor errado em `theme.css` que `DESIGN.md` não nomeia só é pega pelo teste "sem hex fora do `:root`". Adicionar uma afirmação reversa e uma pro `--focus-ring-color`.
