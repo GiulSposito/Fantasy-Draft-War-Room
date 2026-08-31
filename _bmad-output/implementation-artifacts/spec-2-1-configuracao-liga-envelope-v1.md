@@ -2,7 +2,7 @@
 title: 'Story 2.1 — Configuração da liga e envelope V1'
 type: 'feature'
 created: '2026-08-31'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 1
 baseline_commit: '5f054dd7966abfd69a213fe3cf36e798d8ace3a3'
 context:

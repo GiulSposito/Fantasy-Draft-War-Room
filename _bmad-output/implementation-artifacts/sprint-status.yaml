@@ -46,8 +46,8 @@ development_status:
   epic-1-retrospective: done
 
   epic-2: in-progress
-  2-1-configuração-da-liga-e-envelope-v1: review
-  2-2-calendário-snake-times-e-ordem: backlog
+  2-1-configuração-da-liga-e-envelope-v1: done
+  2-2-calendário-snake-times-e-ordem: in-progress
   2-3-event-store-sqlite-mínimo-e-start: backlog
   epic-2-retrospective: optional
 
