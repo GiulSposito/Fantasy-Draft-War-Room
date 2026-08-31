@@ -29,21 +29,21 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-30-2026 12:00
-last_updated: 08-31-2026 16:00
+last_updated: 08-31-2026 16:45
 project: Fantasy Draft War Room
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 development_status:
-  epic-1: in-progress
+  epic-1: done
   1-1-scaffold-do-pacote-r-e-composition-root: done
   1-2-contrato-e-schema-do-snapshot-bundle: done
   1-3-hash-canônico-do-manifesto-do-bundle: done
   1-4-cli-scripts-prepare_snapshot-r: done
   1-5-validação-de-qualidade-do-snapshot: done
   1-6-design-tokens-base-e-tema-escuro: done
-  1-7-superfície-selecionar-e-validar-snapshot: review
-  epic-1-retrospective: optional
+  1-7-superfície-selecionar-e-validar-snapshot: done
+  epic-1-retrospective: done
 
   epic-2: backlog
   2-1-schema-e-validação-da-configuração-da-liga: backlog
@@ -100,3 +100,40 @@ development_status:
   6-3-avaliação-de-rosters-simulados: backlog
   6-4-relatório-determinístico-e-repetição: backlog
   epic-6-retrospective: optional
+action_items:
+  - id: "epic-1-retro-item-1-rodar-code-review-de-contexto-fresco-out"
+    epic: 1
+    action: "Rodar /code-review de contexto fresco (outra sessao/LLM) em cada story
+      antes de marca-la done, alem do review adversarial in-build"
+    owner: "Giu"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-31.md"
+  - id: "epic-1-retro-item-2-ajustar-o-bloco-frozen-do-spec-1-7-adici"
+    epic: 1
+    action: "Ajustar o bloco frozen do spec-1-7: adicionar falha de parse_snapshot_bundle
+      a uniao de bloqueios; trocar snapshot_content_hash_invalido por snapshot_content_incompativel
+      na I/O Matrix"
+    owner: "Giu"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-31.md"
+  - id: "epic-1-retro-item-3-unificar-o-predicado-metadado-obrigatori"
+    epic: 1
+    action: "Unificar o predicado metadado-obrigatorio-ausente entre R/domain_snapshot.R
+      e R/domain_snapshot_quality.R num helper compartilhado"
+    owner: "dev loop"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-31.md"
+  - id: "epic-1-retro-item-4-tornar-o-aria-busy-da-superficie-1-7-obs"
+    epic: 1
+    action: "Tornar o aria-busy da superficie 1.7 observavel via carregamento assincrono
+      (shiny::ExtendedTask)"
+    owner: "dev loop"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-31.md"
+  - id: "epic-1-retro-item-5-padrao-de-teste-para-stories-de-superfic"
+    epic: 1
+    action: "Padrao de teste para stories de superficie Shiny: testar helpers de render
+      puros direto + afirmar a fiacao do modulo no teste de boot do app.R"
+    owner: "Giu"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-31.md"
