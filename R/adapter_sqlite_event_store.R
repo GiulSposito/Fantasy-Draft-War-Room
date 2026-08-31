@@ -89,16 +89,26 @@ resolve_event_store_path <- function(override = getOption("fdwr.event_store_path
 #'
 #' @param path Caminho do arquivo SQLite.
 #' @return Uma conexao `DBI`. Emite `warning()` se o modo WAL nao pegou (o banco
-#'   ainda funciona em rollback-journal).
+#'   ainda funciona em rollback-journal). Se um `PRAGMA` lanca (disco cheio,
+#'   arquivo travado/corrompido), fecha a conexao e re-lanca -- nao deixa lock
+#'   nem `-wal`/`-shm` pendurados.
 #' @export
 event_store_connect <- function(path) {
-  stopifnot(is.character(path), length(path) == 1L, nzchar(path))
+  stopifnot(is.character(path), length(path) == 1L, !is.na(path), nzchar(path))
   con <- DBI::dbConnect(RSQLite::SQLite(), path)
-  mode <- DBI::dbGetQuery(con, "PRAGMA journal_mode=WAL")[[1]]
-  if (!identical(tolower(mode), "wal")) {
-    warning(sprintf("event store nao entrou em modo WAL (journal_mode=%s).", mode))
-  }
-  DBI::dbExecute(con, "PRAGMA foreign_keys=ON")
+  tryCatch(
+    {
+      mode <- DBI::dbGetQuery(con, "PRAGMA journal_mode=WAL")[[1]]
+      if (!identical(tolower(mode), "wal")) {
+        warning(sprintf("event store nao entrou em modo WAL (journal_mode=%s).", mode))
+      }
+      DBI::dbExecute(con, "PRAGMA foreign_keys=ON")
+    },
+    error = function(e) {
+      try(DBI::dbDisconnect(con), silent = TRUE)
+      stop(e)
+    }
+  )
   con
 }
 
@@ -151,9 +161,15 @@ event_store_next_sequence <- function(con, draft_id) {
 #' Executa `fn` dentro de uma transacao atomica
 #'
 #' Embrulha [DBI::dbWithTransaction()]. `fn(con)` faz os inserts; qualquer erro
-#' lancado, ou um [domain_error()] *retornado* por `fn`, forca rollback total e
-#' vira `domain_error("event_store_transacao_falhou")` -- nada e commitado. Se
-#' `fn` retorna normalmente, devolve o valor de `fn` e a transacao commita.
+#' lancado, um [domain_error()] *retornado* por `fn`, ou um abort por interrupt
+#' (Ctrl-C) forca rollback total e vira
+#' `domain_error("event_store_transacao_falhou")` -- nada e commitado. Se `fn`
+#' retorna normalmente, devolve o valor de `fn` e a transacao commita.
+#'
+#' `fn` pode retornar `NULL` no sucesso: o caminho de sucesso e detectado pela
+#' sentinela `box$done` (marcada como ultima expressao apos `fn` retornar sem
+#' erro), nao pelo valor -- `dbWithTransaction()` tambem devolve `NULL` num
+#' rollback por `dbBreak()` ou por interrupt, sem re-lancar.
 #'
 #' @param con Conexao do event store.
 #' @param fn Funcao `function(con) { ... }`.
@@ -162,11 +178,13 @@ event_store_next_sequence <- function(con, draft_id) {
 #' @export
 event_store_transaction <- function(con, fn) {
   stopifnot(is.function(fn))
-  # Environment (reference semantics) para carregar a falha para fora da
-  # transacao: apos `dbBreak()`, `dbWithTransaction()` devolve `NULL` e nao ha
-  # como distinguir isso de um retorno legitimo pelo valor.
+  # Environment (reference semantics) para carregar estado para fora da
+  # transacao: apos `dbBreak()` ou um abort por interrupt, `dbWithTransaction()`
+  # devolve `NULL` sem re-lancar -- indistinguivel de um `fn` que retorna `NULL`
+  # no sucesso. `box$done` so e marcado no caminho de sucesso.
   box <- new.env(parent = emptyenv())
   box$err <- NULL
+  box$done <- FALSE
   result <- tryCatch(
     DBI::dbWithTransaction(con, {
       value <- fn(con)
@@ -174,6 +192,7 @@ event_store_transaction <- function(con, fn) {
         box$err <- value
         DBI::dbBreak()
       }
+      box$done <- TRUE
       value
     }),
     error = function(e) {
@@ -186,6 +205,13 @@ event_store_transaction <- function(con, fn) {
       "event_store_transacao_falhou",
       "A transacao do event store falhou; nenhuma alteracao foi gravada.",
       list(causa = conditionMessage(box$err))
+    ))
+  }
+  if (!isTRUE(box$done)) {
+    return(domain_error(
+      "event_store_transacao_falhou",
+      "A transacao do event store falhou; nenhuma alteracao foi gravada.",
+      list(causa = "transacao interrompida ou nao concluida")
     ))
   }
   result

@@ -41,6 +41,20 @@ test_that("connect: caminho invalido -> erro de contrato", {
   expect_error(event_store_connect(character(0)))
   expect_error(event_store_connect(c("a", "b")))
   expect_error(event_store_connect(""))
+  expect_error(event_store_connect(NA_character_))
+})
+
+test_that("connect: PRAGMA que lanca (arquivo nao-sqlite) -> excecao limpa; boot devolve domain_error", {
+  path <- withr::local_tempfile(fileext = ".sqlite")
+  writeBin(as.raw(c(0x00, 0x01, 0x02, 0x03, 0xff)), path) # lixo: nao e um banco
+
+  # suppressWarnings: RSQLite avisa "file is not a database" ao conectar; o que
+  # importa e o PRAGMA virar excecao e o boot converter em domain_error.
+  expect_error(suppressWarnings(event_store_connect(path)))
+
+  out <- suppressWarnings(boot_event_store(path))
+  expect_true(is_domain_error(out))
+  expect_identical(out$code, "event_store_indisponivel")
 })
 
 test_that("init: cria as 5 tabelas e grava user_version = 1", {
@@ -170,6 +184,16 @@ test_that("transaction: conclui -> commita todos os inserts e devolve o valor de
   })
   expect_identical(out, "ok")
   expect_identical(DBI::dbGetQuery(con, "SELECT COUNT(*) FROM draft_event")[[1]], 2L)
+})
+
+test_that("transaction: fn retorna NULL no sucesso -> commita, retorno NULL, insert presente", {
+  con <- local_event_store()
+  out <- event_store_transaction(con, function(c) {
+    seed_session(c, "d1")
+    NULL
+  })
+  expect_null(out)
+  expect_true(draft_session_started(con, "d1"))
 })
 
 test_that("transaction: fn lanca apos inserts parciais -> rollback total + domain_error", {
