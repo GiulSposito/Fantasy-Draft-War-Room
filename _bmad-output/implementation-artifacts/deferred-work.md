@@ -129,3 +129,13 @@ Itens reais levantados durante o build, fora do escopo da story que os expôs. C
 - source_spec: `spec-2-3-event-store-sqlite-start.md`
   summary: `event_store_transaction()` embrulha qualquer `domain_error` retornado por `fn` num genérico `event_store_transacao_falhou`, perdendo o `code`/`details` original.
   evidence: O comportamento bate com a I/O Matrix frozen da 2.3, mas o code review apontou que o Epic 3 (record_pick / undo / correct) vai querer despachar na causa real ("jogador já escolhido", "pick fora de ordem") em vez de num código único. A Story 2.4 (`start_draft`) é a primeira a passar um `fn` que pode retornar `domain_error` de negócio — decidir lá se `event_store_transaction()` passa o erro original adiante (só embrulhando `stop()` genuíno) ou se `start_draft` faz as precondições fora da transação (o plano atual) e o embrulho genérico basta.
+
+## Deferred from: code review da spec-3-1 (2026-08-31)
+
+- source_spec: `spec-3-1-roster-melhor-lineup-e-ganho-marginal-puro.md`
+  summary: `best_lineup()` sempre roda otimização + classificação + laço de `upgrade`, mas `roster_feasibility()` só lê `empty_slots` e `marginal_gain()` só lê `total_points` (e o chama 2×). Um núcleo interno "só pontos/slots vazios" evitaria o trabalho descartado.
+  evidence: `recommend_fast()` (Story 3.2) vai chamar `marginal_gain()` por candidato a cada recálculo de ranking (~50 candidatos → ~100 `best_lineup` completos por recálculo), e o smoke check da simulação (168 picks) exercita o mesmo caminho. Decidir na 3.2, quando o custo real do caminho crítico ficar mensurável, se vale extrair um `roster_points_only()` interno.
+
+- source_spec: `spec-3-1-roster-melhor-lineup-e-ganho-marginal-puro.md`
+  summary: `roster_feasibility()` (via `best_lineup()$empty_slots`) não distingue "nenhum jogador no slot" de "jogador escalado sem projeção". Um roster com 3 RBs todos sem `points` reportaria "RB inatingível".
+  evidence: A regra frozen "`points` ausente ⇒ nunca titula ⇒ -Inf" faz um jogador sem projeção contar como slot vazio na viabilidade. Não pode ocorrer enquanto o contrato do snapshot do Epic 1 exige `points` para todo jogador em metrics.csv; revisitar só se esse contrato afrouxar ou se a UI da 4.x precisar separar "falta jogador" de "falta projeção".
